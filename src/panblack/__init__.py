@@ -30,7 +30,7 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
     Args:
         path: input path.
         pandoc_path: path to pandoc executable.
-        input_format: the markdown input format (can include extensions.)
+        input_format: the input format (can include extensions.)
         require_idempotence_format: the format to require the formatter to be idempotent. If "input_format", same as input_format, if "", skip checking, else check with the specified format.
     """
 
@@ -72,15 +72,15 @@ class MarkdownFormatter(CoreOptions):
         )
 
     @cached_property
-    def markdown(self) -> str:
+    def text_converted(self) -> str:
         return self.convert(self.text, self.input_format, self.input_format)
 
     def check_idempotence(
         self,
         output_format: str,
     ) -> bool:
-        ref = self.convert(self.text, self.input_format, output_format)
-        round_trip = self.convert(self.markdown, self.input_format, output_format)
+        ref = self.convert(self.text, self.input_format, output_format).strip()
+        round_trip = self.convert(self.text_converted, self.input_format, output_format).strip()
 
         logger.debug("Checking idempotence to %s", output_format)
         res = ref == round_trip
@@ -98,10 +98,10 @@ class MarkdownFormatter(CoreOptions):
     def write(self) -> None:
         if self.is_idempotent:
             # make sure reading before writting
-            markdown = self.markdown
+            text_converted = self.text_converted
             logger.info("Overwritting %s", self.path)
             with self.path.open("w") as f:
-                f.write(markdown)
+                f.write(text_converted)
 
 
 @dataclass
@@ -149,7 +149,7 @@ class Options(CoreOptions):
                     for p in chain(*[path.glob(f"**/*{ext}") for ext in exts])
                     if not any(p.match(exclude) for exclude in excludes)
                 ]
-                logger.info("Found %s markdown files from %s.", len(res), path)
+                logger.info("Found %s files from %s.", len(res), path)
                 logger.debug(res)
                 all_paths += res
             else:
@@ -175,7 +175,7 @@ class Options(CoreOptions):
         require_idempotence_format = self.require_idempotence_format
 
         logger.info(
-            "Running %s --standalone --from=%s %s",
+            "Running %s --standalone --from=%s %s ...",
             "pandoc" if pandoc_path is None else pandoc_path,
             self.input_format,
             " ".join(pandoc_args),
