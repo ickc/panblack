@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from difflib import unified_diff
 from functools import cached_property
@@ -32,12 +33,14 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
         pandoc_path: path to pandoc executable.
         input_format: the input format (can include extensions.)
         require_idempotence_format: the format to require the formatter to be idempotent. If "input_format", same as input_format, if "", skip checking, else check with the specified format.
+        del_jupytext_encoding: if True and if input_format starts with ipynb, jupytext encoding will be deleted in metadata.
     """
 
     path: Path
     pandoc_path: Optional[Path] = None
     input_format: str = "markdown"
     require_idempotence_format: str = "input_format"
+    del_jupytext_encoding: bool = True
 
 
 @dataclass
@@ -54,7 +57,19 @@ class MarkdownFormatter(CoreOptions):
     def text(self) -> str:
         logger.debug("Reading %s", self.path)
         with self.path.open("r") as f:
-            return f.read()
+            res = f.read()
+        if self.del_jupytext_encoding and self.input_format.startswith("ipynb"):
+            try:
+                data = json.loads(res)
+                del data["metadata"]["jupytext"]["encoding"]
+                res = json.dumps(data)
+            except KeyError:
+                pass
+            except Exception as e:
+                logger.warning(
+                    "Cannot delete jupytext encoding key in %s with the following exception: %s", self.path, e
+                )
+        return res
 
     def convert(
         self,
@@ -173,6 +188,7 @@ class Options(CoreOptions):
         pandoc_path = self.pandoc_path
         input_format = self.input_format
         require_idempotence_format = self.require_idempotence_format
+        del_jupytext_encoding = self.del_jupytext_encoding
 
         logger.info(
             "Running %s --standalone --from=%s %s ...",
@@ -188,6 +204,7 @@ class Options(CoreOptions):
                 pandoc_path=pandoc_path,
                 input_format=input_format,
                 require_idempotence_format=require_idempotence_format,
+                del_jupytext_encoding=del_jupytext_encoding,
             )
             formatter.write()
 
