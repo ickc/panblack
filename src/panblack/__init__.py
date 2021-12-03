@@ -104,8 +104,8 @@ class Options(CoreOptions):
         excludes: the patterns to be excluded in globbing.
         processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
 
-    TODO:
-        read from config files.
+    Notes:
+        TODO: read from config files.
     """
 
     exts: Sequence[str] = (".md", ".markdown")
