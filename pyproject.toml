@@ -39,6 +39,7 @@ packages = [
 include = [
     'LICENSE',
     'README.rst',
+    'src/panblack/templates/template.md',
 ]
 
 [tool.poetry.dependencies]
