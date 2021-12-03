@@ -43,6 +43,8 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
 
 @dataclass
 class MarkdownFormatter(CoreOptions):
+    """Markdown formatter using pandoc."""
+
     @cached_property
     def text(self) -> str:
         logger.debug("Reading %s", self.path)
@@ -102,7 +104,8 @@ class Options(CoreOptions):
     """Panblack formatter.
 
     Args:
-        exts: the file extensions to glob from path if it is a directory.
+        paths: additional paths.
+        exts: the file extensions to glob from each path if it is a directory.
         excludes: the patterns to be excluded in globbing.
         processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
 
@@ -110,6 +113,7 @@ class Options(CoreOptions):
         TODO: read from config files.
     """
 
+    paths: list[Path] = field(default_factory=list)
     exts: Sequence[str] = (".md", ".markdown")
     excludes: Sequence[str] = (".git/**", ".pytest_cache/**")
     toml_path: Path = Path("pyproject.toml")
@@ -119,29 +123,31 @@ class Options(CoreOptions):
     def __post_init__(self) -> None:
         if self.require_idempotence_format == "input_format":
             self.require_idempotence_format = self.input_format
+        self.paths.append(self.path)
 
     @property
     def dict(self) -> dict:
         return {key: str(value) if isinstance(value, Path) else value for key, value in vars(self).items()}
 
     @property
-    def paths(self) -> list[Path]:
-        path = self.path
+    def all_paths(self) -> list[Path]:
         exts = self.exts
         excludes = self.excludes
 
-        if path.is_dir():
-            res = [
-                p
-                for p in chain(*[path.glob(f"**/*{ext}") for ext in exts])
-                if not any(p.match(exclude) for exclude in excludes)
-            ]
-            # res = [p for p in path.iterdir() if p.suffix in exts and not any(p.match(exclude) for exclude in excludes)]
-            logger.info("Found %s markdown files.", len(res))
-            logger.debug(res)
-            return res
-        else:
-            return [path]
+        all_paths = []
+        for path in self.paths:
+            if path.is_dir():
+                res = [
+                    p
+                    for p in chain(*[path.glob(f"**/*{ext}") for ext in exts])
+                    if not any(p.match(exclude) for exclude in excludes)
+                ]
+                logger.info("Found %s markdown files from %s.", len(res), path)
+                logger.debug(res)
+                all_paths += res
+            else:
+                all_paths.append(path)
+        return all_paths
 
     def to_toml(self):
         """Dump self to a toml file."""
@@ -176,7 +182,7 @@ class Options(CoreOptions):
 
         processes = self.processes or psutil.cpu_count(logical=False)
 
-        map_parallel(write, self.paths, processes=processes, mode="multithreading", return_results=False)
+        map_parallel(write, self.all_paths, processes=processes, mode="multithreading", return_results=False)
 
 
 def cli():
