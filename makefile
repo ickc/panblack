@@ -120,3 +120,8 @@ bump:
 
 src/panblack/pipeline_serial.py: src/panblack/pipeline.py
 	sed -e 's/app_//g' -e 's/.result()//g' $< > $@
+
+# template #####################################################################
+
+src/panblack/templates/template.md:
+	pandoc --print-default-template=markdown > $@

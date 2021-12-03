@@ -17,6 +17,7 @@ from map_parallel import map_parallel
 from panflute.tools import convert_text
 
 from .util import setup_logging
+from .templates import TEMPLATE
 
 logger = setup_logging()
 __version__ = "0.1.0"
@@ -162,7 +163,7 @@ class Options(CoreOptions):
             f.write(tomlkit.dumps(config))
 
     def exec(self):
-        pandoc_args = self.pandoc_args
+        pandoc_args = [f"--template={TEMPLATE}"] + self.pandoc_args
         pandoc_path = self.pandoc_path
         input_format = self.input_format
         require_idempotence_format = self.require_idempotence_format
