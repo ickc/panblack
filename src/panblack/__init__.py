@@ -12,6 +12,7 @@ from typing import Optional, Sequence
 import defopt
 import psutil
 import tomlkit
+from custom_inherit import DocInheritMeta
 from map_parallel import map_parallel
 from panflute.tools import convert_text
 
@@ -22,17 +23,26 @@ __version__ = "0.1.0"
 
 
 @dataclass
-class MarkdownFormatter:
+class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type: ignore[misc] # type-checker limitation
+    """Core options needed throughout.
+
+    Args:
+        path: input path.
+        pandoc_args: additional args passes to pandoc.
+        pandoc_path: path to pandoc executable.
+        input_format: the markdown input format (can include extensions.)
+        require_idempotence_format: the format to require the formatter to be idempotent. If "input_format", same as input_format, if "", skip checking, else check with the specified format.
+    """
+
     path: Path
     pandoc_args: list[str] = field(default_factory=list)
     pandoc_path: Optional[Path] = None
     input_format: str = "markdown"
     require_idempotence_format: str = "input_format"
 
-    def __post_init__(self) -> None:
-        if self.require_idempotence_format == "input_format":
-            self.require_idempotence_format = self.input_format
 
+@dataclass
+class MarkdownFormatter(CoreOptions):
     @cached_property
     def text(self) -> str:
         logger.debug("Reading %s", self.path)
@@ -86,23 +96,27 @@ class MarkdownFormatter:
 
 
 @dataclass
-class Options:
+class Options(CoreOptions):
     """Panblack formatter.
 
-    TODO: read from config files.
+    Args:
+        exts: the file extensions to glob from path if it is a directory.
+        excludes: the patterns to be excluded in globbing.
+        processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
+
+    TODO:
+        read from config files.
     """
 
-    path: Path
-    save: bool = False
-    toml_path: Path = Path("pyproject.toml")
-    excludes: Sequence[str] = (".git/**", ".pytest_cache/**")
     exts: Sequence[str] = (".md", ".markdown")
+    excludes: Sequence[str] = (".git/**", ".pytest_cache/**")
+    toml_path: Path = Path("pyproject.toml")
+    save: bool = False
     processes: Optional[int] = None
-    # to MarkdownFormatter
-    pandoc_args: list[str] = field(default_factory=list)
-    pandoc_path: Optional[Path] = None
-    input_format: str = "markdown"
-    require_idempotence_format: str = "input_format"
+
+    def __post_init__(self) -> None:
+        if self.require_idempotence_format == "input_format":
+            self.require_idempotence_format = self.input_format
 
     @property
     def dict(self) -> dict:
