@@ -27,34 +27,28 @@ class MarkdownFormatter:
     pandoc_args: list[str] = field(default_factory=list)
     pandoc_path: Optional[Path] = None
     input_format: str = "markdown"
-    require_idempotent_native: bool = False
-    require_idempotent_markdown: bool = True
+    require_idempotence_format: str = "input_format"
+
+    def __post_init__(self) -> None:
+        if self.require_idempotence_format == "input_format":
+            self.require_idempotence_format = self.input_format
 
     @cached_property
     def text(self) -> str:
-        logger.debug("Reading from %s", self.path)
+        logger.debug("Reading %s", self.path)
         with self.path.open("r") as f:
             return f.read()
 
-    def to_native(self, text: str) -> str:
+    def convert(
+        self,
+        text: str,
+        input_format: str,
+        output_format: str,
+    ) -> str:
         return convert_text(
             text,
-            input_format=self.input_format,
-            output_format="native",
-            standalone=True,
-            extra_args=self.pandoc_args,
-            pandoc_path=self.pandoc_path,
-        )
-
-    @cached_property
-    def native(self) -> str:
-        return self.to_native(self.text)
-
-    def to_markdown(self, text: str) -> str:
-        return convert_text(
-            text,
-            input_format="native",
-            output_format=self.input_format,
+            input_format=input_format,
+            output_format=output_format,
             standalone=True,
             extra_args=self.pandoc_args,
             pandoc_path=self.pandoc_path,
@@ -62,27 +56,27 @@ class MarkdownFormatter:
 
     @cached_property
     def markdown(self) -> str:
-        return self.to_markdown(self.native)
+        return self.convert(self.text, self.input_format, self.input_format)
+
+    def check_idempotence(
+        self,
+        output_format: str,
+    ) -> bool:
+        ref = self.convert(self.text, self.input_format, output_format)
+        round_trip = self.convert(self.markdown, self.input_format, output_format)
+
+        logger.debug("Checking idempotence to %s", output_format)
+        res = ref == round_trip
+        if not res:
+            logger.warning(
+                f"Not idempotent converting to {output_format}, {self.path}\n"
+                + "\n".join(line for line in unified_diff(ref.split(), round_trip.split()))
+            )
+        return res
 
     @cached_property
     def is_idempotent(self) -> bool:
-        if self.require_idempotent_native:
-            native_round_trip = self.to_native(self.markdown)
-            res = self.native == native_round_trip
-            if not res:
-                logger.debug("File is not idempotent at %s", self.path)
-                for line in unified_diff(self.native.split(), native_round_trip.split()):
-                    logger.debug(line)
-            return res
-        if self.require_idempotent_markdown:
-            markdown_round_trip = self.to_markdown(self.to_native(self.markdown))
-            res = self.markdown == markdown_round_trip
-            if not res:
-                logger.debug("File is not idempotent at %s", self.path)
-                for line in unified_diff(self.markdown.split(), markdown_round_trip.split()):
-                    logger.debug(line)
-            return res
-        return True
+        return not self.require_idempotence_format or self.check_idempotence(self.require_idempotence_format)
 
     def write(self) -> None:
         if self.is_idempotent:
@@ -108,8 +102,7 @@ class Options:
     pandoc_args: list[str] = field(default_factory=list)
     pandoc_path: Optional[Path] = None
     input_format: str = "markdown"
-    require_idempotent_native: bool = False
-    require_idempotent_markdown: bool = True
+    require_idempotence_format: str = "input_format"
 
     @property
     def dict(self) -> dict:
@@ -124,12 +117,12 @@ class Options:
         if path.is_dir():
             res = [
                 p
-                for p in chain(*[path.glob(f"**/*{ext}") for ext in self.exts])
+                for p in chain(*[path.glob(f"**/*{ext}") for ext in exts])
                 if not any(p.match(exclude) for exclude in excludes)
             ]
             # res = [p for p in path.iterdir() if p.suffix in exts and not any(p.match(exclude) for exclude in excludes)]
-            logger.debug(res)
             logger.info("Found %s markdown files.", len(res))
+            logger.debug(res)
             return res
         else:
             return [path]
@@ -150,8 +143,7 @@ class Options:
         pandoc_args = self.pandoc_args
         pandoc_path = self.pandoc_path
         input_format = self.input_format
-        require_idempotent_native = self.require_idempotent_native
-        require_idempotent_markdown = self.require_idempotent_markdown
+        require_idempotence_format = self.require_idempotence_format
 
         def write(path):
             formatter = MarkdownFormatter(
@@ -159,10 +151,8 @@ class Options:
                 pandoc_args=pandoc_args,
                 pandoc_path=pandoc_path,
                 input_format=input_format,
-                require_idempotent_native=require_idempotent_native,
-                require_idempotent_markdown=require_idempotent_markdown,
+                require_idempotence_format=require_idempotence_format,
             )
-            logger.info("Processing %s", path)
             formatter.write()
 
         if self.save:
