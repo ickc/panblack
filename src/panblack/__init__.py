@@ -90,9 +90,11 @@ class MarkdownFormatter(CoreOptions):
 
     def write(self) -> None:
         if self.is_idempotent:
+            # make sure reading before writting
+            markdown = self.markdown
             logger.info("Overwritting %s", self.path)
             with self.path.open("w") as f:
-                f.write(self.markdown)
+                f.write(markdown)
 
 
 @dataclass
