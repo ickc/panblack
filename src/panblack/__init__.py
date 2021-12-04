@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+from collections import Sequence
 from concurrent import futures
 from dataclasses import dataclass, field
 from difflib import unified_diff
 from functools import cached_property
 from itertools import chain
 from pathlib import Path
-from typing import Optional, Sequence
+from subprocess import list2cmdline
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 import defopt
 import psutil
@@ -19,6 +21,9 @@ from panflute.tools import convert_text
 
 from .templates import TEMPLATE
 from .util import setup_logging
+
+if TYPE_CHECKING:
+    from typing import Any
 
 logger = setup_logging()
 __version__ = "0.1.0"
@@ -37,11 +42,21 @@ EXECUTOR: dict[str, futures.Executor] = {
 
 
 @dataclass
+class RequirePath:
+    """Require positional path via MRO.
+
+    Args:
+        path: input path.
+    """
+
+    path: Path
+
+
+@dataclass
 class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type: ignore[misc] # type-checker limitation
     """Core options needed throughout.
 
     Args:
-        path: input path.
         pandoc_path: path to pandoc executable.
         input_format: the input format (can include extensions.)
         require_idempotence_format: the formats to require the formatter to be idempotent. For each format, if "input_format", same as input_format, if "", skip checking, else check with the specified format.
@@ -49,7 +64,6 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
         post_jupytext_sync: run jupytext after panblack with args: --sync --pipe black --pipe 'isort - --treat-comment-as-code "# %%" --float-to-top'
     """
 
-    path: Path
     pandoc_path: Optional[Path] = None
     input_format: str = "markdown"
     require_idempotence_format: Sequence[str] = ("input_format",)
@@ -58,7 +72,7 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
 
 
 @dataclass
-class MarkdownFormatter(CoreOptions):
+class MarkdownFormatter(CoreOptions, RequirePath):
     """Markdown formatter using pandoc.
 
     Args:
@@ -152,39 +166,52 @@ class MarkdownFormatter(CoreOptions):
 
 
 @dataclass
-class Options(CoreOptions):
-    """Panblack formatter.
+class CommonOptions(CoreOptions):
+    """Common options for panblack formatter.
 
     Args:
-        paths: additional paths.
-        pandoc_args: additional args passes to pandoc, white-space-delimited.
+        paths: input paths.
         exts: the file extensions to glob from each path if it is a directory.
         excludes: the patterns to be excluded in globbing.
-        processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
-        mode: the mode to run concorrently, can be multithreading, multiprocessing.
-
-    Notes:
-        TODO: read from config files.
     """
 
     paths: list[Path] = field(default_factory=list)
-    pandoc_args: str = ""
     exts: Sequence[str] = (".md", ".markdown")
     excludes: Sequence[str] = (".git/**", ".pytest_cache/**")
-    toml_path: Path = Path("pyproject.toml")
-    save: bool = False
-    processes: Optional[int] = None
-    mode: str = "multithreading"
+
+
+@dataclass
+class Options(CommonOptions):
+    """Panblack formatter.
+
+    Args:
+        pandoc_args: additional args passes to pandoc.
+    """
+
+    pandoc_args: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.require_idempotence_format = [
             self.input_format if f == "input_format" else f for f in self.require_idempotence_format
         ]
-        self.paths.append(self.path)
+
+    @classmethod
+    def from_dict(cls, **options) -> Options:
+        kwargs = {key: [Path(path) for path in value] if key == "paths" else value for key, value in options.items()}
+        return cls(**kwargs)
 
     @property
-    def dict(self) -> dict:
-        return {key: str(value) if isinstance(value, Path) else value for key, value in vars(self).items()}
+    def dict_(self) -> dict[str, Any]:
+        res: dict[str, Any] = {}
+        for key, value in vars(self).items():
+            if value is not None:
+                if isinstance(value, Path):
+                    res[key] = str(value)
+                elif isinstance(value, Sequence):
+                    res[key] = [str(value) if isinstance(value, Path) else value for i in value]
+                else:
+                    res[key] = value
+        return res
 
     @property
     def all_paths(self) -> list[Path]:
@@ -206,23 +233,11 @@ class Options(CoreOptions):
                 all_paths.append(path)
         return all_paths
 
-    def to_toml(self):
-        """Dump self to a toml file."""
-        toml_path = self.toml_path
-        if toml_path.exists():
-            with open(toml_path, "r") as f:
-                config = tomlkit.parse(f.read())
-        else:
-            config = {}
-        config[__name__] = self.dict
-        with open(self.toml_path, "w") as f:
-            f.write(tomlkit.dumps(config))
-
-    def exec(self):
-        if self.save:
-            self.to_toml()
-
-        pandoc_args = [f"--template={TEMPLATE}"] + self.pandoc_args.split()
+    def exec(
+        self,
+        executor: futures.Executor,
+    ) -> list[futures.Future]:
+        pandoc_args = [f"--template={TEMPLATE}"] + self.pandoc_args
         pandoc_path = self.pandoc_path
         input_format = self.input_format
         require_idempotence_format = self.require_idempotence_format
@@ -233,44 +248,121 @@ class Options(CoreOptions):
             "Running %s --standalone --from=%s %s ...",
             "pandoc" if pandoc_path is None else pandoc_path,
             self.input_format,
-            " ".join(pandoc_args),
+            list2cmdline(pandoc_args),
         )
 
-        processes = self.processes or psutil.cpu_count(logical=False)
+        return [
+            executor.submit(
+                MarkdownFormatter,
+                path,
+                pandoc_args=pandoc_args,
+                pandoc_path=pandoc_path,
+                input_format=input_format,
+                require_idempotence_format=require_idempotence_format,
+                del_jupytext_encoding=del_jupytext_encoding,
+                post_jupytext_sync=post_jupytext_sync,
+                auto_write=True,
+            )
+            for path in self.all_paths
+        ]
 
-        executor: futures.Executor
-        with EXECUTOR[self.mode](max_workers=processes) as executor:
-            fs: list[futures.Future] = []
-            for path in self.all_paths:
-                fs.append(
-                    executor.submit(
-                        MarkdownFormatter,
-                        path,
-                        pandoc_args=pandoc_args,
-                        pandoc_path=pandoc_path,
-                        input_format=input_format,
-                        require_idempotence_format=require_idempotence_format,
-                        del_jupytext_encoding=del_jupytext_encoding,
-                        post_jupytext_sync=post_jupytext_sync,
-                        auto_write=True,
-                    )
-                )
-            for f in fs:
-                try:
-                    f.result()
-                except Exception as e:
-                    logger.warning(e)
+
+@dataclass
+class CliOptions(CommonOptions):
+    """Panblack formatter.
+
+    Args:
+        pandoc_args: additional args passes to pandoc, white-space-delimited.
+        processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
+        mode: the mode to run concorrently, can be multithreading, multiprocessing.
+        save: write current cli config into toml config.
+        toml_path: path towards the toml file containing the config. If tool.panblack keys exists, it has higher priority than cli options.
+    """
+
+    pandoc_args: str = ""
+    processes: Optional[int] = None
+    mode: str = "multiprocessing"
+    save: bool = False
+    toml_path: Path = Path("pyproject.toml")
+    toml_key: ClassVar[str] = f"tool.{__name__}"
+
+    @property
+    def options_dict(self) -> dict:
+        return {
+            "pandoc_path": self.pandoc_path,
+            "input_format": self.input_format,
+            "require_idempotence_format": self.require_idempotence_format,
+            "del_jupytext_encoding": self.del_jupytext_encoding,
+            "post_jupytext_sync": self.post_jupytext_sync,
+            "paths": self.paths,
+            "exts": self.exts,
+            "excludes": self.excludes,
+            "pandoc_args": self.pandoc_args.split(),
+        }
+
+    @property
+    def options(self) -> Options:
+        return Options(**self.options_dict)
+
+    @cached_property
+    def toml(self) -> dict:
+        toml_path = self.toml_path
+        if toml_path.exists():
+            try:
+                with toml_path.open("r") as f:
+                    return tomlkit.parse(f.read())  # type: ignore[return-value] # TOMLDocument is dict-like
+            except Exception as e:
+                logger.warning("Trouble parsing %s: %s", toml_path, e)
+        return {}
+
+    @property
+    def has_toml_config(self) -> bool:
+        return self.toml_key in self.toml
+
+    @property
+    def toml_config(self) -> list[dict]:
+        return self.toml[self.toml_key] if self.has_toml_config else {}
+
+    def write_toml(self, **data) -> None:
+        """Dump self to a toml file."""
+        config = self.toml
+        config[self.toml_key] = [data]
+        with open(self.toml_path, "w") as f:
+            f.write(tomlkit.dumps(config))  # type: ignore[arg-type] # TOMLDocument is dict-like
 
 
 def cli():
-    options = defopt.run(
-        Options,
+    cli_options: CliOptions = defopt.run(
+        CliOptions,
         strict_kwonly=False,
         show_types=True,
         no_negated_flags=True,
         version=True,
     )
-    options.exec()
+    processes = cli_options.processes or psutil.cpu_count(logical=False)
+    with EXECUTOR[cli_options.mode](max_workers=processes) as executor:
+        # use CliOptions
+        fs: list[futures.Future] = []
+        if cli_options.save or not cli_options.has_toml_config:
+            logger.info("Using command line options")
+            options = cli_options.options
+            if cli_options.save:
+                cli_options.write_toml(**options.dict_)
+            fs += options.exec(executor)
+        # use options from toml
+        else:
+            logger.info("Using toml options from %s, %s", cli_options.toml_key, cli_options.toml_path)
+            options_dict = cli_options.options_dict
+            for dict_ in cli_options.toml_config:
+                # py39+
+                options = Options.from_dict(**(options_dict | dict_))
+                fs += options.exec(executor)
+        for f in fs:
+            try:
+                f.result()
+            except Exception as e:
+                logger.warning(e)
+        logger.info("Finished processing %s files.", len(fs))
 
 
 if __name__ == "__main__":
