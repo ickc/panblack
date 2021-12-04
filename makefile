@@ -23,9 +23,10 @@ api: docs/api/
 html: dist/docs/
 
 test:
-	TEXPDEBUG=1 $(_python) -m pytest -vv $(PYTESTARGS) \
-		--cov=src --cov-report term $(COVHTML) --no-cov-on-fail --cov-branch \
-		tests
+	coverage run -m panblack --paths .
+	# $(_python) -m pytest -vv $(PYTESTARGS) \
+	# 	--cov=src --cov-report term $(COVHTML) --no-cov-on-fail --cov-branch \
+	# 	tests
 
 test-mpi:
 	mpirun -n $(N_MPI) $(_python) -m pytest -vv --with-mpia \
