@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from concurrent import futures
 from dataclasses import dataclass, field
 from difflib import unified_diff
 from functools import cached_property
@@ -14,7 +15,6 @@ import defopt
 import psutil
 import tomlkit
 from custom_inherit import DocInheritMeta
-from map_parallel import map_parallel
 from panflute.tools import convert_text
 
 from .templates import TEMPLATE
@@ -30,6 +30,10 @@ JUPYTEXT_ARGS = [
     "--pipe",
     'isort - --treat-comment-as-code "# %%" --float-to-top',
 ]
+EXECUTOR: dict[str, futures.Executor] = {
+    "multithreading": futures.ThreadPoolExecutor,  # type: ignore[dict-item] # mypy limitation
+    "multiprocessing": futures.ProcessPoolExecutor,  # type: ignore[dict-item] # mypy limitation
+}
 
 
 @dataclass
@@ -59,9 +63,15 @@ class MarkdownFormatter(CoreOptions):
 
     Args:
         pandoc_args: additional args passes to pandoc.
+        auto_write: run write automatically at init.
     """
 
     pandoc_args: list[str] = field(default_factory=list)
+    auto_write: bool = False
+
+    def __post_init__(self) -> None:
+        if self.auto_write:
+            self.write()
 
     @cached_property
     def is_ipynb(self) -> bool:
@@ -151,8 +161,7 @@ class Options(CoreOptions):
         exts: the file extensions to glob from each path if it is a directory.
         excludes: the patterns to be excluded in globbing.
         processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
-        mode: the mode to run concorrently, can be anything map_parallel support including
-            multiprocessing, multithreading, dask, mpi, mpi_simple, serial
+        mode: the mode to run concorrently, can be multithreading, multiprocessing.
 
     Notes:
         TODO: read from config files.
@@ -210,6 +219,9 @@ class Options(CoreOptions):
             f.write(tomlkit.dumps(config))
 
     def exec(self):
+        if self.save:
+            self.to_toml()
+
         pandoc_args = [f"--template={TEMPLATE}"] + self.pandoc_args.split()
         pandoc_path = self.pandoc_path
         input_format = self.input_format
@@ -224,24 +236,30 @@ class Options(CoreOptions):
             " ".join(pandoc_args),
         )
 
-        def write(path):
-            formatter = MarkdownFormatter(
-                path,
-                pandoc_args=pandoc_args,
-                pandoc_path=pandoc_path,
-                input_format=input_format,
-                require_idempotence_format=require_idempotence_format,
-                del_jupytext_encoding=del_jupytext_encoding,
-                post_jupytext_sync=post_jupytext_sync,
-            )
-            formatter.write()
-
-        if self.save:
-            self.to_toml()
-
         processes = self.processes or psutil.cpu_count(logical=False)
 
-        map_parallel(write, self.all_paths, processes=processes, mode=self.mode, return_results=False)
+        executor: futures.Executor
+        with EXECUTOR[self.mode](max_workers=processes) as executor:
+            fs: list[futures.Future] = []
+            for path in self.all_paths:
+                fs.append(
+                    executor.submit(
+                        MarkdownFormatter,
+                        path,
+                        pandoc_args=pandoc_args,
+                        pandoc_path=pandoc_path,
+                        input_format=input_format,
+                        require_idempotence_format=require_idempotence_format,
+                        del_jupytext_encoding=del_jupytext_encoding,
+                        post_jupytext_sync=post_jupytext_sync,
+                        auto_write=True,
+                    )
+                )
+            for f in fs:
+                try:
+                    f.result()
+                except Exception as e:
+                    logger.warning(e)
 
 
 def cli():
