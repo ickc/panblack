@@ -23,6 +23,14 @@ from .util import setup_logging
 logger = setup_logging()
 __version__ = "0.1.0"
 
+JUPYTEXT_ARGS = [
+    "--sync",
+    "--pipe",
+    "black",
+    "--pipe",
+    'isort - --treat-comment-as-code "# %%" --float-to-top',
+]
+
 
 @dataclass
 class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type: ignore[misc] # type-checker limitation
@@ -34,6 +42,7 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
         input_format: the input format (can include extensions.)
         require_idempotence_format: the formats to require the formatter to be idempotent. For each format, if "input_format", same as input_format, if "", skip checking, else check with the specified format.
         del_jupytext_encoding: if True and if input_format starts with ipynb, jupytext encoding will be deleted in metadata.
+        post_jupytext_sync: run jupytext after panblack with args: --sync --pipe black --pipe 'isort - --treat-comment-as-code "# %%" --float-to-top'
     """
 
     path: Path
@@ -41,6 +50,7 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
     input_format: str = "markdown"
     require_idempotence_format: Sequence[str] = ("input_format",)
     del_jupytext_encoding: bool = True
+    post_jupytext_sync: bool = True
 
 
 @dataclass
@@ -54,11 +64,15 @@ class MarkdownFormatter(CoreOptions):
     pandoc_args: list[str] = field(default_factory=list)
 
     @cached_property
+    def is_ipynb(self) -> bool:
+        return self.input_format.startswith("ipynb")
+
+    @cached_property
     def text(self) -> str:
         logger.debug("Reading %s", self.path)
         with self.path.open("r") as f:
             res = f.read()
-        if self.del_jupytext_encoding and self.input_format.startswith("ipynb"):
+        if self.del_jupytext_encoding and self.is_ipynb:
             try:
                 data = json.loads(res)
                 del data["metadata"]["jupytext"]["encoding"]
@@ -117,6 +131,14 @@ class MarkdownFormatter(CoreOptions):
             logger.info("Overwritting %s", self.path)
             with self.path.open("w") as f:
                 f.write(text_converted)
+            # cannot avoid writing to file first
+            # as we need to use the --sync option as well
+            if self.post_jupytext_sync and self.is_ipynb:
+                from jupytext.cli import jupytext
+
+                args = JUPYTEXT_ARGS + [str(self.path)]
+                logger.info("Running post jupytext sync: jupytext %s", " ".join(args))
+                jupytext(args=args)
 
 
 @dataclass
@@ -193,6 +215,7 @@ class Options(CoreOptions):
         input_format = self.input_format
         require_idempotence_format = self.require_idempotence_format
         del_jupytext_encoding = self.del_jupytext_encoding
+        post_jupytext_sync = self.post_jupytext_sync
 
         logger.info(
             "Running %s --standalone --from=%s %s ...",
@@ -209,6 +232,7 @@ class Options(CoreOptions):
                 input_format=input_format,
                 require_idempotence_format=require_idempotence_format,
                 del_jupytext_encoding=del_jupytext_encoding,
+                post_jupytext_sync=post_jupytext_sync,
             )
             formatter.write()
 
