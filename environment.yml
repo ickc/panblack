@@ -23,6 +23,7 @@ dependencies:
   - "custom-inherit >=2.4,<3"
   # run_constrained:
   - coloredlogs >=14,<16
+  - jupytext >=1,<2
   - pandoc >=2.15,<2.17
   # tests:
   - coverage

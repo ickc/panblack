@@ -52,6 +52,7 @@ custom-inherit = "^2.4"
 
 # extras
 coloredlogs = { optional = true, version = ">=14,<16" }
+jupytext = { optional = true, version = "^1" }
 
 # tests
 coverage = { optional = true, version = "*" }
