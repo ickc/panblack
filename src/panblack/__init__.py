@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections import Sequence
 from concurrent import futures
 from dataclasses import dataclass, field
 from difflib import unified_diff
@@ -11,7 +10,7 @@ from functools import cached_property
 from itertools import chain
 from pathlib import Path
 from subprocess import list2cmdline
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional, Sequence
 
 import defopt
 import psutil
