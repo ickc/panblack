@@ -141,6 +141,7 @@ class Options(CoreOptions):
     toml_path: Path = Path("pyproject.toml")
     save: bool = False
     processes: Optional[int] = None
+    mode: str = "multithreading"
 
     def __post_init__(self) -> None:
         self.require_idempotence_format = [
@@ -214,7 +215,7 @@ class Options(CoreOptions):
 
         processes = self.processes or psutil.cpu_count(logical=False)
 
-        map_parallel(write, self.all_paths, processes=processes, mode="multithreading", return_results=False)
+        map_parallel(write, self.all_paths, processes=processes, mode=self.mode, return_results=False)
 
 
 def cli():
