@@ -129,6 +129,8 @@ class Options(CoreOptions):
         exts: the file extensions to glob from each path if it is a directory.
         excludes: the patterns to be excluded in globbing.
         processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
+        mode: the mode to run concorrently, can be anything map_parallel support including
+            multiprocessing, multithreading, dask, mpi, mpi_simple, serial
 
     Notes:
         TODO: read from config files.
