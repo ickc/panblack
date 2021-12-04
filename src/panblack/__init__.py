@@ -32,14 +32,14 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
         path: input path.
         pandoc_path: path to pandoc executable.
         input_format: the input format (can include extensions.)
-        require_idempotence_format: the format to require the formatter to be idempotent. If "input_format", same as input_format, if "", skip checking, else check with the specified format.
+        require_idempotence_format: the formats to require the formatter to be idempotent. For each format, if "input_format", same as input_format, if "", skip checking, else check with the specified format.
         del_jupytext_encoding: if True and if input_format starts with ipynb, jupytext encoding will be deleted in metadata.
     """
 
     path: Path
     pandoc_path: Optional[Path] = None
     input_format: str = "markdown"
-    require_idempotence_format: str = "input_format"
+    require_idempotence_format: Sequence[str] = ("input_format",)
     del_jupytext_encoding: bool = True
 
 
@@ -108,7 +108,7 @@ class MarkdownFormatter(CoreOptions):
 
     @cached_property
     def is_idempotent(self) -> bool:
-        return not self.require_idempotence_format or self.check_idempotence(self.require_idempotence_format)
+        return all(self.check_idempotence(f) for f in self.require_idempotence_format)
 
     def write(self) -> None:
         if self.is_idempotent:
@@ -143,8 +143,9 @@ class Options(CoreOptions):
     processes: Optional[int] = None
 
     def __post_init__(self) -> None:
-        if self.require_idempotence_format == "input_format":
-            self.require_idempotence_format = self.input_format
+        self.require_idempotence_format = [
+            self.input_format if f == "input_format" else f for f in self.require_idempotence_format
+        ]
         self.paths.append(self.path)
 
     @property
