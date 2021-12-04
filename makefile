@@ -23,7 +23,7 @@ api: docs/api/
 html: dist/docs/
 
 test:
-	coverage run -m panblack --paths .
+	coverage run $$(which panblack) --paths .
 	# $(_python) -m pytest -vv $(PYTESTARGS) \
 	# 	--cov=src --cov-report term $(COVHTML) --no-cov-on-fail --cov-branch \
 	# 	tests
