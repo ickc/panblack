@@ -9,7 +9,7 @@ from difflib import unified_diff
 from functools import cached_property
 from itertools import chain
 from pathlib import Path
-from subprocess import list2cmdline
+from subprocess import list2cmdline  # nosec
 from typing import TYPE_CHECKING, ClassVar, Optional, Sequence
 
 import defopt
@@ -160,7 +160,7 @@ class MarkdownFormatter(CoreOptions, RequirePath):
                 from jupytext.cli import jupytext
 
                 args = JUPYTEXT_ARGS + [str(self.path)]
-                logger.info("Running post jupytext sync: jupytext %s", " ".join(args))
+                logger.info("Running post jupytext sync: jupytext %s", list2cmdline(args))
                 jupytext(args=args)
 
 
@@ -329,6 +329,32 @@ class CliOptions(CommonOptions):
         with open(self.toml_path, "w") as f:
             f.write(tomlkit.dumps(config))  # type: ignore[arg-type] # TOMLDocument is dict-like
 
+    def exec(self) -> None:
+        processes = self.processes or psutil.cpu_count(logical=False)
+        with EXECUTOR[self.mode](max_workers=processes) as executor:
+            # use CliOptions
+            fs: list[futures.Future] = []
+            if self.save or not self.has_toml_config:
+                logger.info("Using command line options")
+                options = self.options
+                if self.save:
+                    self.write_toml(**options.dict_)
+                fs += options.exec(executor)
+            # use options from toml
+            else:
+                logger.info("Using toml options from %s, %s", self.toml_key, self.toml_path)
+                options_dict = self.options_dict
+                for dict_ in self.toml_config:
+                    # py39+
+                    options = Options.from_dict(**(options_dict | dict_))
+                    fs += options.exec(executor)
+            for f in fs:
+                try:
+                    f.result()
+                except Exception as e:
+                    logger.warning(e)
+            logger.info("Finished processing %s files.", len(fs))
+
 
 def cli():
     cli_options: CliOptions = defopt.run(
@@ -338,30 +364,7 @@ def cli():
         no_negated_flags=True,
         version=True,
     )
-    processes = cli_options.processes or psutil.cpu_count(logical=False)
-    with EXECUTOR[cli_options.mode](max_workers=processes) as executor:
-        # use CliOptions
-        fs: list[futures.Future] = []
-        if cli_options.save or not cli_options.has_toml_config:
-            logger.info("Using command line options")
-            options = cli_options.options
-            if cli_options.save:
-                cli_options.write_toml(**options.dict_)
-            fs += options.exec(executor)
-        # use options from toml
-        else:
-            logger.info("Using toml options from %s, %s", cli_options.toml_key, cli_options.toml_path)
-            options_dict = cli_options.options_dict
-            for dict_ in cli_options.toml_config:
-                # py39+
-                options = Options.from_dict(**(options_dict | dict_))
-                fs += options.exec(executor)
-        for f in fs:
-            try:
-                f.result()
-            except Exception as e:
-                logger.warning(e)
-        logger.info("Finished processing %s files.", len(fs))
+    cli_options.exec()
 
 
 if __name__ == "__main__":
