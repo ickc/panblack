@@ -331,7 +331,7 @@ class CliOptions(CommonOptions):
 
     def exec(self) -> None:
         processes = self.processes or psutil.cpu_count(logical=False)
-        with EXECUTOR[self.mode](max_workers=processes) as executor:
+        with EXECUTOR[self.mode](max_workers=processes) as executor:  # type: ignore[operator] # mypy limitation
             # use CliOptions
             fs: list[futures.Future] = []
             if self.save or not self.has_toml_config:
