@@ -345,8 +345,8 @@ class CliOptions(CommonOptions):
                 logger.info("Using toml options from %s, %s", self.toml_key, self.toml_path)
                 options_dict = self.options_dict
                 for dict_ in self.toml_config:
-                    # py39+
-                    options = Options.from_dict(**(options_dict | dict_))
+                    # options = Options.from_dict(**(options_dict | dict_))  # py39+
+                    options = Options.from_dict(**{**options_dict, **dict_})
                     fs += options.exec(executor)
             for f in fs:
                 try:
