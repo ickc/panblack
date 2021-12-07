@@ -2,14 +2,14 @@
 input_format = "markdown-raw_attribute-latex_macros+east_asian_line_breaks+autolink_bare_uris"
 require_idempotence_format = ["html"]
 paths = ["pages", "README.md"]
-exts = [".md"]
+exts = ["md"]
 excludes = []
 pandoc_args = ["--sandbox", "--wrap=preserve", "--columns=120", "--reference-location=block"]
 
 [["tool.panblack"]]
 paths = ["src"]
-exts = [".ipynb"]
-excludes = [".ipynb_checkpoints/**"]
+exts = ["ipynb"]
+excludes = [".ipynb_checkpoints/"]
 # modified from
 # pandoc --list-extensions=markdown | tr -d '\n'
 # to mimics markdown-raw_attribute-latex_macros+east_asian_line_breaks+autolink_bare_uris
@@ -19,7 +19,7 @@ pandoc_args = ["--sandbox", "--wrap=preserve", "--columns=120", "--reference-loc
 
 [["tool.panblack"]]
 paths = ["posts"]
-exts = [".md"]
+exts = ["md"]
 excludes = []
 input_format = "markdown-raw_attribute-latex_macros+east_asian_line_breaks+autolink_bare_uris"
 require_idempotence_format = ["html", "latex"]

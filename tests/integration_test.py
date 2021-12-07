@@ -18,7 +18,7 @@ def test_integration():
 def test_integration_ipynb():
     cli_options = CliOptions(
         paths=[DIR / Path("tests/ipynb/example_1.ipynb")],
-        exts=[".ipynb"],
+        exts=["ipynb"],
         input_format="ipynb",
     )
     cli_options.exec()

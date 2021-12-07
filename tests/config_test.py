@@ -15,7 +15,7 @@ class TestMarkdownFormatter(TestCase):
         self.out_path = Path(DIR / "example.out.toml")
         self.cli_options = CliOptions(
             paths=[Path("pages"), Path("posts"), Path("README.md")],
-            exts=[".md"],
+            exts=["md"],
             excludes=[],
             input_format="markdown-raw_attribute-latex_macros+east_asian_line_breaks+autolink_bare_uris",
             require_idempotence_format=["html"],

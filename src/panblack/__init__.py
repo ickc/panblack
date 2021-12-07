@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from concurrent import futures
 from dataclasses import dataclass, field
@@ -10,7 +11,7 @@ from difflib import unified_diff
 from itertools import chain
 from pathlib import Path
 from subprocess import list2cmdline  # nosec
-from typing import ClassVar, List, Optional, Sequence
+from typing import ClassVar, Generator, List, Optional, Sequence
 
 import defopt
 import psutil
@@ -177,12 +178,12 @@ class GlobPath:
     Args:
         paths: input paths.
         exts: the file extensions to glob from each path if it is a directory.
-        excludes: the patterns to be excluded in globbing.
+        excludes: the regex patterns to be excluded in globbing.
     """
 
-    paths: List[Path] = field(default_factory=list)
-    exts: Sequence[str] = (".md", ".markdown")
-    excludes: Sequence[str] = (".git/**", ".pytest_cache/**")
+    paths: Sequence[Path] = field(default_factory=list)
+    exts: Sequence[str] = ("md", "markdown")
+    excludes: Sequence[str] = (".git/", ".pytest_cache/")
 
     @classmethod
     def from_dict(cls, **options) -> Options:
@@ -190,24 +191,24 @@ class GlobPath:
         return cls(**kwargs)  # type: ignore[return-value] # mypy limitation
 
     @property
-    def all_paths(self) -> List[Path]:
+    def all_paths(self) -> Generator[Path, None, None]:
         exts = self.exts
-        excludes = self.excludes
+        # all_paths is often only called once so we don't need to compile earlier
+        excludes = [re.compile(exclude) for exclude in self.excludes]
 
-        all_paths = []
+        counter = 0
         for path in self.paths:
             if path.is_dir():
-                res = [
-                    p
-                    for p in chain(*[path.glob(f"**/*{ext}") for ext in exts])
-                    if not any(p.match(exclude) for exclude in excludes)
-                ]
-                logger.info("Found %s files from %s.", len(res), path)
-                logger.debug(res)
-                all_paths += res
+                for p in chain(*(path.glob(f"**/*.{ext}") for ext in exts)):
+                    if not any(exclude.search(str(p)) for exclude in excludes):
+                        logger.debug("Yielding %s", p)
+                        counter += 1
+                        yield p
             else:
-                all_paths.append(path)
-        return all_paths
+                logger.debug("Yielding %s", p)
+                counter += 1
+                yield path
+        logger.info("Found %s files from %s.", counter, path)
 
 
 @dataclass
