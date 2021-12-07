@@ -33,7 +33,7 @@ class TestMarkdownFormatter(TestCase):
             out = f.read().strip()
         with self.path.open() as f:
             ref = f.read().strip()
-        self.out_path.unlink(missing_ok=True)
+        self.out_path.unlink()
         assert out == ref
 
     def test_load(self):
