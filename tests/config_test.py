@@ -35,3 +35,7 @@ class TestMarkdownFormatter(TestCase):
             ref = f.read().strip()
         self.out_path.unlink(missing_ok=True)
         assert out == ref
+
+    def test_load(self):
+        cli_options = CliOptions(toml_path=self.path)
+        assert cli_options.toml_config
