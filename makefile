@@ -24,10 +24,11 @@ html: dist/docs/
 
 test:
 	rm -f .coverage*
-	$(_python) -m pytest -vv $(PYTESTARGS) \
-		--cov=src --cov-report term $(COVHTML) --no-cov-on-fail --cov-branch \
-		--cov-config=pyproject.toml \
+	coverage run -m pytest -vv $(PYTESTARGS) \
 		tests
+	coverage combine
+	coverage report
+	coverage html
 
 test-mpi:
 	mpirun -n $(N_MPI) $(_python) -m pytest -vv --with-mpia \
