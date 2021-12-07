@@ -10,7 +10,7 @@ from functools import cached_property
 from itertools import chain
 from pathlib import Path
 from subprocess import list2cmdline  # nosec
-from typing import TYPE_CHECKING, ClassVar, Optional, Sequence
+from typing import ClassVar, List, Optional, Sequence
 
 import defopt
 import psutil
@@ -20,9 +20,6 @@ from panflute.tools import convert_text
 
 from .templates import TEMPLATE
 from .util import setup_logging
-
-if TYPE_CHECKING:
-    from typing import Any
 
 logger = setup_logging()
 __version__ = "0.1.0"
@@ -79,7 +76,7 @@ class MarkdownFormatter(CoreOptions, RequirePath):
         auto_write: run write automatically at init.
     """
 
-    pandoc_args: list[str] = field(default_factory=list)
+    pandoc_args: List[str] = field(default_factory=list)
     auto_write: bool = False
 
     def __post_init__(self) -> None:
@@ -174,7 +171,7 @@ class CommonOptions(CoreOptions):
         excludes: the patterns to be excluded in globbing.
     """
 
-    paths: list[Path] = field(default_factory=list)
+    paths: List[Path] = field(default_factory=list)
     exts: Sequence[str] = (".md", ".markdown")
     excludes: Sequence[str] = (".git/**", ".pytest_cache/**")
 
@@ -187,7 +184,7 @@ class Options(CommonOptions):
         pandoc_args: additional args passes to pandoc.
     """
 
-    pandoc_args: list[str] = field(default_factory=list)
+    pandoc_args: List[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.require_idempotence_format = [
@@ -213,7 +210,7 @@ class Options(CommonOptions):
         }
 
     @property
-    def all_paths(self) -> list[Path]:
+    def all_paths(self) -> List[Path]:
         exts = self.exts
         excludes = self.excludes
 
@@ -235,7 +232,7 @@ class Options(CommonOptions):
     def exec(
         self,
         executor: futures.Executor,
-    ) -> list[futures.Future]:
+    ) -> List[futures.Future]:
         pandoc_args = [f"--template={TEMPLATE}"] + self.pandoc_args
         pandoc_path = self.pandoc_path
         input_format = self.input_format
@@ -323,7 +320,7 @@ class CliOptions(CommonOptions):
         return self.toml_key in self.toml
 
     @property
-    def toml_config(self) -> list[dict]:
+    def toml_config(self) -> List[dict]:
         return self.toml[self.toml_key] if self.has_toml_config else {}
 
     def write_toml(self, **data) -> None:
@@ -339,7 +336,7 @@ class CliOptions(CommonOptions):
         processes = self.processes or psutil.cpu_count(logical=False)
         with EXECUTOR[self.mode](max_workers=processes) as executor:  # type: ignore[operator] # mypy limitation
             # use CliOptions
-            fs: list[futures.Future] = []
+            fs: List[futures.Future] = []
             if self.save or not self.has_toml_config:
                 logger.info("Using command line options")
                 options = self.options
