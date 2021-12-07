@@ -29,7 +29,8 @@ def setup_logging(
     logger.addHandler(handler)
     if env_var:
         try:
-            logger.setLevel(level=(_level := os.environ.get(env_var, level)))
+            _level = os.environ.get(env_var, level)
+            logger.setLevel(level=_level)
         except ValueError:
             logger.setLevel(level=level)
             logger.error(
