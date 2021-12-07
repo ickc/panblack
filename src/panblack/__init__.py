@@ -171,7 +171,7 @@ class MarkdownFormatter(CoreOptions, RequirePath):
 
 
 @dataclass
-class CommonOptions(CoreOptions):
+class GlobPath:
     """Common options for panblack formatter.
 
     Args:
@@ -211,7 +211,7 @@ class CommonOptions(CoreOptions):
 
 
 @dataclass
-class Options(CommonOptions):
+class Options(GlobPath, CoreOptions):
     """Panblack formatter.
 
     Args:
@@ -273,7 +273,7 @@ class Options(CommonOptions):
 
 
 @dataclass
-class CliOptions(CommonOptions):
+class CliOptions(GlobPath, CoreOptions):
     """Panblack formatter.
 
     Args:
