@@ -59,11 +59,6 @@ See ``panblack -h`` for details.
 
 You can also experiments with the cli flags to your liking, and when you want to write it to the config file ``pyproject.toml``, use the flag ``--save``, and optionally ``--save-append`` if you want to have multiple configurations running concurrently.
 
-Note on ipynb
-=============
-
-Note that while panblack supports ipynb formats, I personally use it together with `pannb <https://github.com/ickc/pannb>`__ that treats the ipynb as input format in pandoc. If you use other processor that reads from ipynb, such as ``nbconvert``, you may find it not idempotent as it is processed by something other than pandoc after all.
-
 Example config
 ==============
 
@@ -97,6 +92,21 @@ The following TOML is some examples:
    input_format = "markdown-raw_attribute-latex_macros+east_asian_line_breaks+autolink_bare_uris"
    require_idempotence_format = ["html", "latex"]
    pandoc_args = ["--sandbox", "--wrap=preserve", "--columns=120", "--reference-location=block"]
+
+Note
+====
+
+ipynb
+-----
+
+Note that while panblack supports ipynb formats, I personally use it together with `pannb <https://github.com/ickc/pannb>`__ that treats the ipynb as input format in pandoc. If you use other processor that reads from ipynb, such as ``nbconvert``, you may find it not idempotent as it is processed by something other than pandoc after all.
+
+other formats
+-------------
+
+In principle the design here supports formats other than markdown, ipynb. But these are the 2 that I used and tested.
+
+For other formats, to achieve idempotence, you probably need to have a custom template. See ```src/panblack/templates/template.md`` <src/panblack/templates/template.md>`__ for an example of a markdown template.
 
 .. |Documentation Status| image:: https://readthedocs.org/projects/panblack/badge/?version=latest
    :target: https://panblack.readthedocs.io/en/latest/?badge=latest&style=plastic
