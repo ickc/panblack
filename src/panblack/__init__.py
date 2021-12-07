@@ -66,6 +66,14 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
     del_jupytext_encoding: bool = True
     post_jupytext_sync: bool = True
 
+    @cached_property
+    def is_markdown(self) -> bool:
+        return self.input_format.startswith("markdown")
+
+    @cached_property
+    def is_ipynb(self) -> bool:
+        return self.input_format.startswith("ipynb")
+
 
 @dataclass
 class MarkdownFormatter(CoreOptions, RequirePath):
@@ -82,10 +90,6 @@ class MarkdownFormatter(CoreOptions, RequirePath):
     def __post_init__(self) -> None:
         if self.auto_write:
             self.write()
-
-    @cached_property
-    def is_ipynb(self) -> bool:
-        return self.input_format.startswith("ipynb")
 
     @cached_property
     def text(self) -> str:
@@ -175,39 +179,10 @@ class CommonOptions(CoreOptions):
     exts: Sequence[str] = (".md", ".markdown")
     excludes: Sequence[str] = (".git/**", ".pytest_cache/**")
 
-
-@dataclass
-class Options(CommonOptions):
-    """Panblack formatter.
-
-    Args:
-        pandoc_args: additional args passes to pandoc.
-    """
-
-    pandoc_args: List[str] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        self.require_idempotence_format = [
-            self.input_format if f == "input_format" else f for f in self.require_idempotence_format
-        ]
-
     @classmethod
     def from_dict(cls, **options) -> Options:
         kwargs = {key: [Path(path) for path in value] if key == "paths" else value for key, value in options.items()}
-        return cls(**kwargs)
-
-    @property
-    def options_dict(self) -> dict:
-        return {
-            "input_format": self.input_format,
-            "require_idempotence_format": self.require_idempotence_format,
-            "del_jupytext_encoding": self.del_jupytext_encoding,
-            "post_jupytext_sync": self.post_jupytext_sync,
-            "paths": [str(path) for path in self.paths],
-            "exts": self.exts,
-            "excludes": self.excludes,
-            "pandoc_args": self.pandoc_args,
-        }
+        return cls(**kwargs)  # type: ignore[return-value] # mypy limitation
 
     @property
     def all_paths(self) -> List[Path]:
@@ -229,11 +204,40 @@ class Options(CommonOptions):
                 all_paths.append(path)
         return all_paths
 
+
+@dataclass
+class Options(CommonOptions):
+    """Panblack formatter.
+
+    Args:
+        pandoc_args: additional args passes to pandoc.
+    """
+
+    pandoc_args: List[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.require_idempotence_format = [
+            self.input_format if f == "input_format" else f for f in self.require_idempotence_format
+        ]
+
+    @property
+    def options_dict(self) -> dict:
+        return {
+            "input_format": self.input_format,
+            "require_idempotence_format": self.require_idempotence_format,
+            "del_jupytext_encoding": self.del_jupytext_encoding,
+            "post_jupytext_sync": self.post_jupytext_sync,
+            "paths": [str(path) for path in self.paths],
+            "exts": self.exts,
+            "excludes": self.excludes,
+            "pandoc_args": self.pandoc_args,
+        }
+
     def exec(
         self,
         executor: futures.Executor,
     ) -> List[futures.Future]:
-        pandoc_args = [f"--template={TEMPLATE}"] + self.pandoc_args
+        pandoc_args = [f"--template={TEMPLATE}"] + self.pandoc_args if self.is_markdown else self.pandoc_args
         pandoc_path = self.pandoc_path
         input_format = self.input_format
         require_idempotence_format = self.require_idempotence_format
