@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "panblack"
 version = "0.1.0"
-description = "panblack—black-like formatter for markdown using pandoc"
+description = "panblack---black-like formatter for pandoc users"
 license = "BSD-3-Clause"
 keywords = [
     "pandoc",
