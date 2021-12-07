@@ -57,6 +57,7 @@ jupytext = { optional = true, version = "^1" }
 
 # tests
 coverage = { optional = true, version = "*" }
+tomli = { optional = true, version = "*" }
 coveralls = { optional = true, version = "*" }
 # flake8 = { optional = true, version = "*" }
 pytest = { optional = true, version = "*" }
@@ -91,6 +92,7 @@ extras = [
 ]
 tests = [
     "coverage",
+    "tomli",
     "coveralls",
     # "flake8",
     "pytest",
