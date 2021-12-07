@@ -118,6 +118,7 @@ source = [
 
 [tool.coverage.run]
 branch = true
+concurrency = ["thread", "multiprocessing"]
 source = [
     'src',
     'tests',
