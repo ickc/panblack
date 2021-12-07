@@ -205,7 +205,7 @@ class GlobPath:
                         counter += 1
                         yield p
             else:
-                logger.debug("Yielding %s", p)
+                logger.debug("Yielding %s", path)
                 counter += 1
                 yield path
         logger.info("Found %s files from %s.", counter, path)
