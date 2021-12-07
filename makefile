@@ -24,9 +24,8 @@ html: dist/docs/
 
 test:
 	rm -f .coverage*
-	coverage run $$(which panblack) --paths . --excludes src/panblack/templates/template.md
-	$(_python) -m pytest -vv -s $(PYTESTARGS) \
-		--cov-report term $(COVHTML) --no-cov-on-fail --cov-append \
+	$(_python) -m pytest -vv $(PYTESTARGS) \
+		--cov=src --cov='*/site-packages' --cov-report term $(COVHTML) --no-cov-on-fail --cov-append \
 		--cov-config=pyproject.toml \
 		tests
 
