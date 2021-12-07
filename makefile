@@ -23,7 +23,7 @@ api: docs/api/
 html: dist/docs/
 
 test:
-	rm -f .coverage
+	rm -f .coverage*
 	coverage run $$(which panblack) --paths . --excludes src/panblack/templates/template.md
 	$(_python) -m pytest -vv -s $(PYTESTARGS) \
 		--cov-report term $(COVHTML) --no-cov-on-fail --cov-append \
@@ -36,7 +36,7 @@ test-mpi:
 		tests
 
 clean:
-	rm -f $(RSTs)
+	rm -f $(RSTs) .coverage*
 
 # docs #########################################################################
 
