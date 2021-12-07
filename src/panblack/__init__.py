@@ -273,45 +273,21 @@ class Options(GlobPath, CoreOptions):
 
 
 @dataclass
-class CliOptions(GlobPath, CoreOptions):
-    """Panblack formatter.
+class ConfigFile:
+    """Config file IO.
 
     Args:
-        pandoc_args: additional args passes to pandoc, white-space-delimited.
-        processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
-        mode: the mode to run concorrently, can be multithreading, multiprocessing.
         save: write current cli config into toml config.
         save_append: if specified, append to current toml config when saving.
         save_only: if save and save_only, only perform save to toml config and exit.
         toml_path: path towards the toml file containing the config. If tool.panblack keys exists, it has higher priority than cli options.
     """
 
-    pandoc_args: str = ""
-    processes: Optional[int] = None
-    mode: str = "multiprocessing"
     save: bool = False
     save_append: bool = False
     save_only: bool = True
     toml_path: Path = Path("pyproject.toml")
     toml_key: ClassVar[str] = f"tool.{__name__}"
-
-    @property
-    def options_dict(self) -> dict:
-        return {
-            "pandoc_path": self.pandoc_path,
-            "input_format": self.input_format,
-            "require_idempotence_format": self.require_idempotence_format,
-            "del_jupytext_encoding": self.del_jupytext_encoding,
-            "post_jupytext_sync": self.post_jupytext_sync,
-            "paths": self.paths,
-            "exts": self.exts,
-            "excludes": self.excludes,
-            "pandoc_args": self.pandoc_args.split(),
-        }
-
-    @property
-    def options(self) -> Options:
-        return Options(**self.options_dict)
 
     @cached_property
     def toml(self) -> dict:
@@ -340,6 +316,39 @@ class CliOptions(GlobPath, CoreOptions):
         )
         with open(self.toml_path, "w") as f:
             f.write(tomlkit.dumps(config))  # type: ignore[arg-type] # TOMLDocument is dict-like
+
+
+@dataclass
+class CliOptions(ConfigFile, GlobPath, CoreOptions):
+    """Panblack formatter.
+
+    Args:
+        pandoc_args: additional args passes to pandoc, white-space-delimited.
+        processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
+        mode: the mode to run concorrently, can be multithreading, multiprocessing.
+    """
+
+    pandoc_args: str = ""
+    processes: Optional[int] = None
+    mode: str = "multiprocessing"
+
+    @property
+    def options_dict(self) -> dict:
+        return {
+            "pandoc_path": self.pandoc_path,
+            "input_format": self.input_format,
+            "require_idempotence_format": self.require_idempotence_format,
+            "del_jupytext_encoding": self.del_jupytext_encoding,
+            "post_jupytext_sync": self.post_jupytext_sync,
+            "paths": self.paths,
+            "exts": self.exts,
+            "excludes": self.excludes,
+            "pandoc_args": self.pandoc_args.split(),
+        }
+
+    @property
+    def options(self) -> Options:
+        return Options(**self.options_dict)
 
     def exec(self) -> None:
         processes = self.processes or psutil.cpu_count(logical=False)
