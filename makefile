@@ -25,7 +25,7 @@ html: dist/docs/
 test:
 	rm -f .coverage*
 	$(_python) -m pytest -vv $(PYTESTARGS) \
-		--cov=src --cov='*/site-packages' --cov-report term $(COVHTML) --no-cov-on-fail --cov-append \
+		--cov=src --cov-report term $(COVHTML) --no-cov-on-fail --cov-branch \
 		--cov-config=pyproject.toml \
 		tests
 
