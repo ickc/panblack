@@ -34,8 +34,7 @@ jobs:
         pip install -U poetry setuptools
         pip install .[extras,tests]
         # let coverage read setup.py instead of pyproject.toml
-        make setup.py
-        mv pyproject.toml .pyproject.toml
+        make editable
     - name: Install dependencies—pandoc
       run: |
         # pandoc
@@ -49,4 +48,4 @@ jobs:
         python -c 'import panblack'
     - name: Tests
       run: |
-        make test COVHTML='--cov-report=xml'
+        make test
