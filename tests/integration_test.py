@@ -17,5 +17,5 @@ class TestMarkdownFormatter(TestCase):
             excludes=["src/panblack/templates/template.md"],
         )
 
-    def integration_test(self):
+    def test_integration(self):
         self.cli_options.exec()
