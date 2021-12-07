@@ -23,10 +23,12 @@ api: docs/api/
 html: dist/docs/
 
 test:
-	coverage run $$(which panblack) --paths .
-	# $(_python) -m pytest -vv $(PYTESTARGS) \
-	# 	--cov=src --cov-report term $(COVHTML) --no-cov-on-fail --cov-branch \
-	# 	tests
+	rm -f .coverage
+	coverage run $$(which panblack) --paths . --excludes src/panblack/templates/template.md
+	$(_python) -m pytest -vv -s $(PYTESTARGS) \
+		--cov-report term $(COVHTML) --no-cov-on-fail --cov-append \
+		--cov-config=pyproject.toml \
+		tests
 
 test-mpi:
 	mpirun -n $(N_MPI) $(_python) -m pytest -vv --with-mpia \
