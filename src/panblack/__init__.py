@@ -200,17 +200,17 @@ class Options(CommonOptions):
         return cls(**kwargs)
 
     @property
-    def dict_(self) -> dict[str, Any]:
-        res: dict[str, Any] = {}
-        for key, value in vars(self).items():
-            if value is not None:
-                if isinstance(value, Path):
-                    res[key] = str(value)
-                elif isinstance(value, Sequence):
-                    res[key] = [str(value) if isinstance(value, Path) else value for i in value]
-                else:
-                    res[key] = value
-        return res
+    def options_dict(self) -> dict:
+        return {
+            "input_format": self.input_format,
+            "require_idempotence_format": self.require_idempotence_format,
+            "del_jupytext_encoding": self.del_jupytext_encoding,
+            "post_jupytext_sync": self.post_jupytext_sync,
+            "paths": [str(path) for path in self.paths],
+            "exts": self.exts,
+            "excludes": self.excludes,
+            "pandoc_args": self.pandoc_args,
+        }
 
     @property
     def all_paths(self) -> list[Path]:
@@ -275,6 +275,8 @@ class CliOptions(CommonOptions):
         processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
         mode: the mode to run concorrently, can be multithreading, multiprocessing.
         save: write current cli config into toml config.
+        save_append: if specified, append to current toml config when saving.
+        save_only: if save and save_only, only perform save to toml config and exit.
         toml_path: path towards the toml file containing the config. If tool.panblack keys exists, it has higher priority than cli options.
     """
 
@@ -282,6 +284,8 @@ class CliOptions(CommonOptions):
     processes: Optional[int] = None
     mode: str = "multiprocessing"
     save: bool = False
+    save_append: bool = False
+    save_only: bool = True
     toml_path: Path = Path("pyproject.toml")
     toml_key: ClassVar[str] = f"tool.{__name__}"
 
@@ -325,7 +329,9 @@ class CliOptions(CommonOptions):
     def write_toml(self, **data) -> None:
         """Dump self to a toml file."""
         config = self.toml
-        config[self.toml_key] = [data]
+        config[self.toml_key] = (
+            config[self.toml_key] + [data] if self.save_append and self.toml_key in config else [data]
+        )
         with open(self.toml_path, "w") as f:
             f.write(tomlkit.dumps(config))  # type: ignore[arg-type] # TOMLDocument is dict-like
 
@@ -338,8 +344,9 @@ class CliOptions(CommonOptions):
                 logger.info("Using command line options")
                 options = self.options
                 if self.save:
-                    self.write_toml(**options.dict_)
-                fs += options.exec(executor)
+                    self.write_toml(**options.options_dict)
+                if not (self.save and self.save_only):
+                    fs += options.exec(executor)
             # use options from toml
             else:
                 logger.info("Using toml options from %s, %s", self.toml_key, self.toml_path)
