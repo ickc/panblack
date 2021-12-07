@@ -101,12 +101,22 @@ ipynb
 
 Note that while panblack supports ipynb formats, I personally use it together with `pannb <https://github.com/ickc/pannb>`__ that treats the ipynb as input format in pandoc. If you use other processor that reads from ipynb, such as ``nbconvert``, you may find it not idempotent as it is processed by something other than pandoc after all.
 
-other formats
+Other formats
 -------------
 
 In principle the design here supports formats other than markdown, ipynb. But these are the 2 that I used and tested.
 
 For other formats, to achieve idempotence, you probably need to have a custom template. See ```src/panblack/templates/template.md`` <src/panblack/templates/template.md>`__ for an example of a markdown template.
+
+Also, note that it only makes sense for the input formats to be your source file that you are using pandoc to convert to some other formats. This is because in general pandoc is lossy conversion. For example, we can format RST here. But if your workflow uses other processor to consume RST, it makes more sense to use a parser that is as close as to the processor you’re using. (If however you author in RST and indeed is using pandoc to convert them to other formats, panblack is for you.)
+
+Other platforms
+---------------
+
+This is tested on GitHub Actions with Linux instances. It is written in platform agnostic way so in principle it should supports other platforms. [1]_ The author uses it on macOS and it is working there. If you want more support on Windows, please test and help adding a CI on Windows platforms.
+
+.. [1]
+   Calling pandoc is outsourced to panflute which supports Linux, macOS, Windows.
 
 .. |Documentation Status| image:: https://readthedocs.org/projects/panblack/badge/?version=latest
    :target: https://panblack.readthedocs.io/en/latest/?badge=latest&style=plastic
