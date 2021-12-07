@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
+import sys
 from concurrent import futures
 from dataclasses import dataclass, field
 from difflib import unified_diff
-from functools import cached_property
 from itertools import chain
 from pathlib import Path
 from subprocess import list2cmdline  # nosec
@@ -20,6 +20,11 @@ from panflute.tools import convert_text
 
 from .templates import TEMPLATE
 from .util import setup_logging
+
+if sys.version_info < (3, 8):
+    from backports.cached_property import cached_property
+else:
+    from functools import cached_property
 
 logger = setup_logging()
 __version__ = "0.1.0"
