@@ -11,6 +11,7 @@ def test_integration():
     cli_options = CliOptions(
         paths=[DIR],
         excludes=["src/panblack/templates/template.md"],
+        pandoc_args="--sandbox --wrap=preserve --columns=120 --reference-location=block",
     )
     cli_options.exec()
 
