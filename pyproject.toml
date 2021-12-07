@@ -49,6 +49,7 @@ defopt = "^6"
 psutil = "^5"
 tomlkit = "^0.7"
 custom-inherit = "^2.4"
+"backports.cached-property" = {python = "<3.8", version = "^1"}
 
 # extras
 coloredlogs = { optional = true, version = ">=14,<16" }
