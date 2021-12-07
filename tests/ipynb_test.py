@@ -1,21 +1,20 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest import TestCase
-import json
 
 from panblack import MarkdownFormatter
 
 DIR = Path(__file__).parent / "ipynb"
 
-class TestMarkdownFormatter(TestCase):
 
+class TestMarkdownFormatter(TestCase):
     def setUp(self):
         self.path = path = DIR / "example_1.ipynb"
 
         self.cases = {
-            (del_jupytext_encoding, post_jupytext_sync):
-            MarkdownFormatter(
+            (del_jupytext_encoding, post_jupytext_sync): MarkdownFormatter(
                 path,
                 input_format="ipynb",
                 require_idempotence_format=("ipynb",),
