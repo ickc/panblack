@@ -30,13 +30,6 @@ else:
 logger = setup_logging()
 __version__ = "0.1.0"
 
-JUPYTEXT_ARGS = [
-    "--sync",
-    "--pipe",
-    "black",
-    "--pipe",
-    'isort - --treat-comment-as-code "# %%" --float-to-top',
-]
 EXECUTOR: dict[str, futures.Executor] = {
     "multithreading": futures.ThreadPoolExecutor,  # type: ignore[dict-item] # mypy limitation
     "multiprocessing": futures.ProcessPoolExecutor,  # type: ignore[dict-item] # mypy limitation
@@ -55,6 +48,32 @@ class RequirePath:
 
 
 @dataclass
+class ArgsList:
+    """Provide additional args as list of str.
+
+    Args:
+        pandoc_args: additional args passes to pandoc.
+        jupytext_args: additional args passes to jupytext if post_jupytext_sync is specified.
+    """
+
+    pandoc_args: List[str] = field(default_factory=list)
+    jupytext_args: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ArgsStr:
+    """Provide additional args as white-space-delimited str.
+
+    Args:
+        pandoc_args: additional args passes to pandoc, white-space-delimited.
+        jupytext_args: additional args passes to jupytext if post_jupytext_sync is specified, white-space-delimited.
+    """
+
+    pandoc_args: str = ""
+    jupytext_args: str = ""
+
+
+@dataclass
 class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type: ignore[misc] # type-checker limitation
     """Core options needed throughout.
 
@@ -63,7 +82,7 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
         input_format: the input format (can include extensions.)
         require_idempotence_format: the formats to require the formatter to be idempotent. For each format, if "input_format", same as input_format, if "", skip checking, else check with the specified format.
         del_jupytext_encoding: if True and if input_format starts with ipynb, jupytext encoding will be deleted in metadata.
-        post_jupytext_sync: run jupytext after panblack with args: --sync --pipe black --pipe 'isort - --treat-comment-as-code "# %%" --float-to-top'
+        post_jupytext_sync: run jupytext after panblack with args: --sync {jupytext_args}
     """
 
     pandoc_path: Optional[Path] = None
@@ -82,15 +101,13 @@ class CoreOptions(metaclass=DocInheritMeta(style="google_with_merge")):  # type:
 
 
 @dataclass
-class MarkdownFormatter(CoreOptions, RequirePath):
+class MarkdownFormatter(CoreOptions, ArgsList, RequirePath):
     """Markdown formatter using pandoc.
 
     Args:
-        pandoc_args: additional args passes to pandoc.
         auto_write: run write automatically at init.
     """
 
-    pandoc_args: List[str] = field(default_factory=list)
     auto_write: bool = False
 
     def __post_init__(self) -> None:
@@ -166,7 +183,7 @@ class MarkdownFormatter(CoreOptions, RequirePath):
             if self.post_jupytext_sync and self.is_ipynb:
                 from jupytext.cli import jupytext
 
-                args = JUPYTEXT_ARGS + [str(self.path)]
+                args = ["--sync"] + self.jupytext_args + [str(self.path)]
                 logger.info("Running post jupytext sync: jupytext %s", list2cmdline(args))
                 jupytext(args=args)
 
@@ -212,14 +229,8 @@ class GlobPath:
 
 
 @dataclass
-class Options(GlobPath, CoreOptions):
-    """Panblack formatter.
-
-    Args:
-        pandoc_args: additional args passes to pandoc.
-    """
-
-    pandoc_args: List[str] = field(default_factory=list)
+class Options(GlobPath, CoreOptions, ArgsList):
+    """Panblack formatter."""
 
     def __post_init__(self) -> None:
         self.require_idempotence_format = [
@@ -237,6 +248,7 @@ class Options(GlobPath, CoreOptions):
             "exts": self.exts,
             "excludes": self.excludes,
             "pandoc_args": self.pandoc_args,
+            "jupytext_args": self.jupytext_args,
         }
 
     def exec(
@@ -320,16 +332,14 @@ class ConfigFile:
 
 
 @dataclass
-class CliOptions(ConfigFile, GlobPath, CoreOptions):
+class CliOptions(ConfigFile, GlobPath, CoreOptions, ArgsStr):
     """Panblack formatter.
 
     Args:
-        pandoc_args: additional args passes to pandoc, white-space-delimited.
         processes: the no. of concurrent processes, if not specified, default to no. of physical cores.
         mode: the mode to run concorrently, can be multithreading, multiprocessing.
     """
 
-    pandoc_args: str = ""
     processes: Optional[int] = None
     mode: str = "multiprocessing"
 
@@ -345,6 +355,7 @@ class CliOptions(ConfigFile, GlobPath, CoreOptions):
             "exts": self.exts,
             "excludes": self.excludes,
             "pandoc_args": self.pandoc_args.split(),
+            "jupytext_args": self.jupytext_args.split(),
         }
 
     @property

@@ -19,6 +19,7 @@ class TestMarkdownFormatter(TestCase):
             input_format="markdown-raw_attribute-latex_macros+east_asian_line_breaks+autolink_bare_uris",
             require_idempotence_format=["html"],
             pandoc_args="--sandbox --wrap=preserve --columns=120 --reference-location=block",
+            jupytext_args="--pipe black --pipe isort",
             save=True,
             save_only=True,
             save_append=True,
