@@ -1,7 +1,9 @@
 module Main (main) where
 
 import Control.Monad (unless)
+import Data.Aeson qualified as A
 import Data.Aeson.KeyMap qualified as KM
+import Data.ByteString qualified as B
 import Data.Either (isLeft)
 import Data.IORef
 import Data.Text qualified as T
@@ -10,6 +12,8 @@ import Panblack.Config
 import Panblack.Diff (unifiedDiff)
 import Panblack.Discover (compileExclude, excluded, relativeTo)
 import Panblack.Guard
+import Panblack.Jupytext (pairedPaths)
+import Panblack.Notebook
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize
 import Panblack.Target.Html (htmlCheck)
@@ -90,6 +94,13 @@ main = do
   check "config: rejected pandoc key" $ isLeft (parsed "- paths: [a]\n  pandoc: {filters: [x.lua]}\n")
   check "config: unknown normalization" $ isLeft (parsed "- paths: [a]\n  normalize: [tables]\n")
   check "config: not a list" $ isLeft (parsed "paths: [a]\n")
+  check "config: ipynb and hooks" $
+    fmap (map (\p -> (pcCellFormat p, pcDropJupytextEncoding p, pcHooks p))) (parsed "- paths: [a]\n  ipynb: {cell-format: gfm, drop-jupytext-encoding: false}\n  hooks: [[jupytext, --sync, '{path}']]\n")
+      == Right [("gfm", False, [["jupytext", "--sync", "{path}"]])]
+  check "config: ipynb defaults" $
+    fmap (map (\p -> (pcCellFormat p, pcDropJupytextEncoding p, pcHooks p))) (parsed "- paths: [a]\n") == Right [("gfm-tex_math_gfm", True, [])]
+  check "config: unknown ipynb key" $ isLeft (parsed "- paths: [a]\n  ipynb: {format: gfm}\n")
+  check "config: empty hook" $ isLeft (parsed "- paths: [a]\n  hooks: [[]]\n")
   check "starter config parses" $
     fmap (map pcNormalize) (parsed (encodeUtf8' starterConfig)) == Right [[minBound .. maxBound]]
 
@@ -108,6 +119,52 @@ main = do
   check "diff: equal is empty" $ unifiedDiff "a" "b" "x\n" "x\n" == ""
   check "diff: unified" $
     unifiedDiff "a" "b" "1\n2\n3\n" "1\nX\n3\n" == "--- a\n+++ b\n@@ -1,3 +1,3 @@\n 1\n-2\n+X\n 3\n"
+
+  -- Notebooks
+  let nbProfile = let p = either (error . show) id (markdownProfile "gfm-tex_math_gfm" "gfm-tex_math_gfm" def def) in p {profileChecks = [sourceCheck p, htmlCheck]}
+      fmtNb dropEnc bs = either (Left . failWhere) (Right . fst) . formatNotebook (NotebookOptions dropEnc) nbProfile =<< either (error . T.unpack) Right (readNotebook bs)
+      nb cells meta = "{\n \"cells\": [" <> B.intercalate "," cells <> "\n ],\n \"metadata\": " <> meta <> ",\n \"nbformat\": 4,\n \"nbformat_minor\": 5\n}\n"
+      mdCell src = "\n  {\n   \"cell_type\": \"markdown\",\n   \"metadata\": {},\n   \"source\": " <> src <> "\n  }"
+      code = "\n  {\n   \"cell_type\": \"code\",\n   \"execution_count\": 1.50,\n   \"metadata\": {},\n   \"outputs\": [],\n   \"source\": [\n    \"x  =  _a_\"\n   ]\n  }"
+  check "notebook: a list keeps its layout, other bytes are kept" $
+    fmtNb False (nb [mdCell "[\n    \"Title\\n\",\n    \"=====\\n\",\n    \"\\n\",\n    \"_a_\"\n   ]", code] "{\"x\": 3}")
+      == Right (nb [mdCell "[\n    \"# Title\\n\",\n    \"\\n\",\n    \"*a*\"\n   ]", code] "{\"x\": 3}")
+  check "notebook: a string stays a string, with its final newline" $
+    fmtNb False (nb [mdCell "\"_a_\\n\\n* b\\n\""] "{}") == Right (nb [mdCell "\"*a*\\n\\n- b\\n\""] "{}")
+  check "notebook: formatted cells are unchanged" $
+    let x = nb [mdCell (TE.encodeUtf8 "[\"# T\\n\", \"\\n\", \"é \\\"q\\\"\"]"), code] "{}" in fmtNb True x == Right x
+  check "notebook: non-ASCII written as the file does" $
+    fmtNb False (nb [mdCell "\"_\\u00e9_\""] "{}") == Right (nb [mdCell "\"*\\u00e9*\""] "{}")
+      && fmtNb False (nb [mdCell (TE.encodeUtf8 "\"_é_\"")] "{}") == Right (nb [mdCell (TE.encodeUtf8 "\"*é*\"")] "{}")
+  let jt members = "{\n  \"jupytext\": {" <> B.intercalate "," members <> "\n  }\n }"
+      enc = "\n   \"encoding\": \"# -*- coding: utf-8 -*-\""
+      fmts = "\n   \"formats\": \"ipynb,md\""
+      other = "\n   \"x\": [1, 2]"
+      dropped members = fmtNb True (nb [mdCell "\"a\""] (jt members))
+  check "notebook: jupytext encoding dropped wherever it is" $
+    dropped [enc, fmts, other] == Right (nb [mdCell "\"a\""] (jt [fmts, other]))
+      && dropped [fmts, enc, other] == Right (nb [mdCell "\"a\""] (jt [fmts, other]))
+      && dropped [fmts, other, enc] == Right (nb [mdCell "\"a\""] (jt [fmts, other]))
+      && dropped [enc] == Right (nb [mdCell "\"a\""] "{\n  \"jupytext\": {}\n }")
+      && fmtNb False (nb [mdCell "\"a\""] (jt [enc])) == Right (nb [mdCell "\"a\""] (jt [enc]))
+  check "notebook: a reference defined in another cell fails the whole-notebook check" $
+    fmtNb False (nb [mdCell "\"[a]\"", mdCell "\"[a]: http://x\""] "{}") == Left "all markdown cells"
+  -- The gfm writer drops the parentheses in @\\(a\\)@ (pandoc 3.10.2).
+  check "notebook: a failing cell is named" $
+    fmtNb False (nb [mdCell "\"a\"", code, mdCell "\"x (\\\\\\\\(a\\\\\\\\)) y\""] "{}") == Left "cell 3"
+  check "notebook: not JSON" $ isLeft (readNotebook "{\"cells\": [}")
+
+  -- Pairs, as jupytext's paired_paths resolves them
+  let paired f formats = pairedPaths f (KM.fromList [("jupytext", A.object [("formats", A.String formats)]), ("language_info", A.object [("file_extension", ".py")])])
+  check "pairs: extension" $ paired "/a/b/nb.ipynb" "ipynb,md" == ["/a/b/nb.md"]
+  check "pairs: format name and suffix" $
+    paired "/a/b/nb.ipynb" "ipynb,py:percent" == ["/a/b/nb.py"] && paired "/a/b/nb.ipynb" "ipynb,.pct.py:percent" == ["/a/b/nb.pct.py"]
+  check "pairs: directory prefix" $ paired "/a/notebooks/nb.ipynb" "notebooks//ipynb,scripts//py:percent" == ["/a/scripts/nb.py"]
+  check "pairs: file name prefix" $ paired "/a/b/nb.ipynb" "ipynb,md/md" == ["/a/b/mdnb.md"]
+  check "pairs: common names and auto" $ paired "/a/b/nb.ipynb" "notebook,markdown,auto:light" == ["/a/b/nb.md", "/a/b/nb.py"]
+  check "pairs: prefix roots are not resolved" $ null (paired "/a/notebooks/x/nb.ipynb" "notebooks///ipynb,scripts///py:percent")
+  check "pairs: inconsistent path" $ null (paired "/a/b/nb.ipynb" "notebooks//ipynb,scripts//py")
+  check "pairs: unpaired" $ null (pairedPaths "/a/nb.ipynb" KM.empty)
 
   n <- readIORef failures
   if n == 0 then putStrLn "all passed" else exitFailure

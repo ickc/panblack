@@ -5,10 +5,13 @@ import Control.Concurrent (forkIO, setNumCapabilities)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.QSem (newQSem, signalQSem, waitQSem)
 import Control.Exception (SomeException, bracket_, displayException, evaluate, try)
+import Data.Aeson qualified as A
+import Data.Aeson.KeyMap qualified as KM
 import Control.Monad (forM, forM_, unless, when)
 import Data.ByteString qualified as B
 import Data.List (intercalate)
 import Data.Map.Strict qualified as M
+import Data.Set qualified as S
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -20,14 +23,18 @@ import Panblack.Config
 import Panblack.Diff (unifiedDiff)
 import Panblack.Discover
 import Panblack.Guard
+import Panblack.Jupytext (pairedPaths)
+import Panblack.Notebook
 import Paths_panblack (version)
 import System.Console.GetOpt
 import System.Directory (canonicalizePath, doesDirectoryExist, doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (takeDirectory, takeExtension, (</>))
+import System.Process (cwd, proc, readCreateProcessWithExitCode)
 import System.IO (hPutStrLn, nativeNewline, stderr)
 import System.IO qualified as IO
+import System.IO.Error (isDoesNotExistError)
 import Text.Pandoc.App (LineEnding (..))
 import Text.Pandoc.Error (renderError)
 import Text.Pandoc.Version (pandocVersionText)
@@ -89,6 +96,8 @@ data Loaded = Loaded
   , lConfig :: ProfileConfig
   , lExcludes :: [Exclude]
   , lProfile :: Profile
+  , lCellProfile :: Profile
+  -- ^ For notebook cells.
   , lEol :: LineEnding
   }
 
@@ -98,6 +107,13 @@ data Outcome
   -- ^ The original and the formatted source.
   | Rejected [CheckDiff]
   | Failed Text
+
+-- | What happened to one file.
+data Result = Result
+  { rOutcome :: Outcome
+  , rWarnings :: [String]
+  , rHookError :: Maybe Text
+  }
 
 main :: IO ()
 main =
@@ -137,8 +153,11 @@ run paths opts
             orDie = either (die' . ((name <> ": ") <>)) pure
         excludes <- orDie (traverse compileExclude (pcExcludes pc))
         settings <- loadSettings root pc >>= orDie . either (Left . T.unpack) Right
-        profile <- orDie . either (Left . T.unpack . renderError) Right $ buildProfile settings (pcCheck pc) (pcNormalize pc)
-        pure (Loaded name root pc excludes profile (setEol settings))
+        let build s = orDie . either (Left . T.unpack . renderError) Right $ buildProfile s (pcCheck pc) (pcNormalize pc)
+            cf = pcCellFormat pc
+        profile <- build settings
+        cellProfile <- build settings {setFrom = cf, setTo = cf}
+        pure (Loaded name root pc excludes profile cellProfile (setEol settings))
       jobs <- maybe getNumProcessors pure (optJobs opts)
       setNumCapabilities jobs
       if stdinMode
@@ -182,30 +201,84 @@ formatFiles opts cwd only loaded jobs = do
             | isFile && M.notMember a byFile -> hPutStrLn stderr ("panblack: " <> p <> ": no profile matches; skipped")
             | otherwise -> pure ()
         pure [(f, l) | (f, l) <- files, any (f `isUnder`) onlyAbs]
-  results <- parMapIO jobs (\(f, l) -> (f,) <$> formatFile opts l f) selected
-  codes <- forM results $ \(f, outcome) -> do
+  let covered = M.keysSet byFile
+  results <- parMapIO jobs (\(f, l) -> (f,) <$> formatFile opts cwd covered l f) selected
+  codes <- forM results $ \(f, r) -> do
     let shown = relativeTo cwd f
+        outcome = rOutcome r
+    forM_ (rWarnings r) $ \w -> hPutStrLn stderr ("warning: " <> shown <> ": " <> w)
     report opts shown outcome
+    forM_ (rHookError r) $ \e -> hPutStrLn stderr ("error: " <> shown <> ": " <> T.unpack e)
     case outcome of
       Changed old out _ | optDiff opts -> TIO.putStr (unifiedDiff (T.pack shown) (T.pack shown) old out)
       _ -> pure ()
-    pure (exitCodeOf opts outcome)
-  summary opts (map snd results)
+    pure (max (exitCodeOf opts outcome) (maybe 0 (const 3) (rHookError r)))
+  summary opts (map (rOutcome . snd) results) (length [() | (_, Result {rHookError = Just _}) <- results])
   exitWith' (maximum (0 : codes))
 
-formatFile :: Opts -> Loaded -> FilePath -> IO Outcome
-formatFile opts l f = do
+-- | Format a file in place, then run the profile's hooks if it was
+-- accepted. The covered files are those of every profile, to warn when
+-- both sides of a jupytext pair are formatted.
+formatFile :: Opts -> FilePath -> S.Set FilePath -> Loaded -> FilePath -> IO Result
+formatFile opts cwd covered l f = do
   r <- try $ do
     bytes <- B.readFile f
     case TE.decodeUtf8' bytes of
-      Left _ -> pure (Failed "not valid UTF-8")
+      Left _ -> pure (Result (Failed "not valid UTF-8") [] Nothing)
       Right raw -> do
-        outcome <- formatSource l raw
+        (outcome, warnings) <-
+          if isNotebook f
+            then do
+              (outcome, meta) <- formatNotebookSource l raw
+              pairs <- forM (pairedPaths f meta) $ \p -> do
+                exists <- doesFileExist p
+                if exists then Just <$> canonicalizePath p else pure Nothing
+              pure
+                ( outcome
+                , [ "paired by jupytext with " <> relativeTo cwd p <> ", which is also formatted; format one side of a pair only"
+                  | Just p <- pairs
+                  , p `S.member` covered
+                  ]
+                )
+            else (,[]) <$> formatSource l raw
+        let dry = optCheck opts || optDiff opts
         case outcome of
-          Changed _ out _ | not (optCheck opts || optDiff opts) -> B.writeFile f (TE.encodeUtf8 out)
+          Changed _ out _ | not dry -> B.writeFile f (TE.encodeUtf8 out)
           _ -> pure ()
-        pure outcome
-  pure $ either (\e -> Failed (T.pack (displayException (e :: SomeException)))) id r
+        -- As 0.x ran jupytext after every accepted file, changed or not.
+        hookError <- case outcome of
+          _ | dry -> pure Nothing
+          Unchanged -> runHooks l f
+          Changed {} -> runHooks l f
+          _ -> pure Nothing
+        pure (Result outcome warnings hookError)
+  pure $ either (\e -> Result (Failed (T.pack (displayException (e :: SomeException)))) [] Nothing) id r
+
+isNotebook :: FilePath -> Bool
+isNotebook f = takeExtension f == ".ipynb"
+
+-- | Run a profile's hooks in order, in the config directory, stopping at the
+-- first that fails.
+runHooks :: Loaded -> FilePath -> IO (Maybe Text)
+runHooks l f = go (pcHooks (lConfig l))
+ where
+  path = T.pack (relativeTo (lRoot l) f)
+  go = \case
+    [] -> pure Nothing
+    cmd : rest -> do
+      let argv = map (T.unpack . T.replace "{path}" path) cmd
+          exe = concat (take 1 argv)
+          shown = T.pack (unwords argv)
+      r <- try (readCreateProcessWithExitCode (proc exe (drop 1 argv)) {cwd = Just (lRoot l)} "")
+      case r of
+        Left e
+          | isDoesNotExistError e -> pure (Just ("hook failed: " <> T.pack exe <> ": command not found"))
+          | otherwise -> pure (Just ("hook failed: " <> shown <> ": " <> T.pack (displayException e)))
+        Right (ExitSuccess, _, _) -> go rest
+        Right (ExitFailure n, out, err) ->
+          pure . Just $
+            "hook failed with exit code " <> T.pack (show n) <> ": " <> shown
+              <> T.pack (concatMap ("\n  " <>) (lines (out <> err)))
 
 formatStdin :: Opts -> Bool -> FilePath -> [Loaded] -> IO ()
 formatStdin opts noConfig cwd loaded = do
@@ -223,7 +296,10 @@ formatStdin opts noConfig cwd loaded = do
         _ -> die' (relativeTo cwd file <> ": matched by more than one profile")
   bytes <- B.getContents
   raw <- either (const (die' "stdin: not valid UTF-8")) pure (TE.decodeUtf8' bytes)
-  outcome <- formatSource l raw
+  outcome <-
+    if maybe False isNotebook (optStdinFilename opts)
+      then fst <$> formatNotebookSource l raw
+      else formatSource l raw
   let name = fromMaybe "-" (optStdinFilename opts)
       quiet = optCheck opts || optDiff opts
   report opts {optVerbose = optVerbose opts && quiet} name outcome
@@ -241,8 +317,8 @@ formatStdin opts noConfig cwd loaded = do
 -- | Format a source, forcing the result so that it's computed in the
 -- calling thread.
 formatSource :: Loaded -> Text -> IO Outcome
-formatSource l raw = do
-  outcome <- evaluate $ case format (lProfile l) src of
+formatSource l raw =
+  forceOutcome $ case format (lProfile l) src of
     Left (PandocFailed e) -> Failed (renderError e)
     Left (ChecksFailed _ _ ds) -> Rejected ds
     Right f
@@ -250,10 +326,6 @@ formatSource l raw = do
       | otherwise -> Changed raw out (formattedBy f)
      where
       out = withEol (formattedText f)
-  case outcome of
-    Rejected ds -> forM_ ds $ \d -> evaluate (T.length (diffBefore d) + T.length (diffAfter d))
-    _ -> pure ()
-  pure outcome
  where
   -- As pandoc's CLI does when reading.
   src = T.filter (/= '\r') (fromMaybe raw (T.stripPrefix "\xFEFF" raw))
@@ -262,6 +334,30 @@ formatSource l raw = do
     Native | nativeNewline == IO.CRLF -> crlf
     _ -> id
   crlf = T.replace "\n" "\r\n"
+
+-- | Format a notebook's markdown cells; also returns its metadata.
+formatNotebookSource :: Loaded -> Text -> IO (Outcome, KM.KeyMap A.Value)
+formatNotebookSource l raw = case readNotebook (TE.encodeUtf8 raw) of
+  Left e -> pure (Failed e, KM.empty)
+  Right nb -> fmap (,notebookMetadata nb) . forceOutcome $
+    case formatNotebook opts (lCellProfile l) nb of
+      Left (NotebookFailure w (PandocFailed e)) -> Failed (w <> ": " <> renderError e)
+      Left (NotebookFailure w (ChecksFailed _ _ ds)) -> Rejected [d {diffCheck = w <> ": " <> diffCheck d} | d <- ds]
+      Right (new, by)
+        | out == raw -> Unchanged
+        | otherwise -> Changed raw out by
+       where
+        out = TE.decodeUtf8Lenient new
+ where
+  opts = NotebookOptions {nbDropJupytextEncoding = pcDropJupytextEncoding (lConfig l)}
+
+forceOutcome :: Outcome -> IO Outcome
+forceOutcome o = do
+  outcome <- evaluate o
+  case outcome of
+    Rejected ds -> forM_ ds $ \d -> evaluate (T.length (diffCheck d) + T.length (diffBefore d) + T.length (diffAfter d))
+    _ -> pure ()
+  pure outcome
 
 report :: Opts -> String -> Outcome -> IO ()
 report opts name = \case
@@ -282,13 +378,14 @@ report opts name = \case
  where
   say = hPutStrLn stderr
 
-summary :: Opts -> [Outcome] -> IO ()
-summary opts outcomes =
+summary :: Opts -> [Outcome] -> Int -> IO ()
+summary opts outcomes hookFailures =
   hPutStrLn stderr . T.unpack . T.intercalate ", " $
     [count n (if dry then "would be reformatted" else "reformatted") | let n = length [() | Changed {} <- outcomes], n > 0]
       ++ [count n (if dry then "would be left unchanged" else "left unchanged") | let n = length [() | Unchanged <- outcomes], n > 0]
       ++ [count n "rejected" | let n = length [() | Rejected {} <- outcomes], n > 0]
       ++ [count n "failed" | let n = length [() | Failed {} <- outcomes], n > 0]
+      ++ [count hookFailures "failed a hook" | hookFailures > 0]
       ++ ["no files to format" | null outcomes]
  where
   dry = optCheck opts || optDiff opts

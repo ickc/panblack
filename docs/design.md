@@ -277,6 +277,18 @@ Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for is
 
     This reads back as a link to `/hithere` followed by a literal `)`.
 
+7. **The commonmark writer drops the parentheses in `\\(...\\)`** (found on notebooks written for MathJax). The text is read correctly, as `Str "\\(a\\)"`, but written without the parentheses, so it reads back as `\a\`:
+
+    ```
+    $ printf '%s\n' 'x \\(a\\) y' | pandoc -f gfm -t gfm   # x \\a\\ y
+    ```
+
+8. **The commonmark writer drops the info string `text`**, so the `text` class is lost (`<pre class="text">` becomes `<pre>`). Other languages are kept.
+
+    ```
+    $ printf '```text\nx\n```\n' | pandoc -f gfm -t gfm       # ```
+    ```
+
 # Tables
 
 Tables are where pandoc as a formatter hurts most. pandoc's table AST stores relative column widths. The reader derives them from the source, using the dash counts and scaling when a line is longer than `columns`; otherwise it stores none. The writer then picks a table syntax (simple, multiline, grid, pipe) based on the widths and on which extensions are enabled, and the new source reads back with different widths or alignment. This design doc is an example: pandoc rewrites its pipe tables as simple tables. That makes the alignment explicitly left and changes the widths, so the `html` check fails, and the widths shift again on every run, so `source` fails too.
@@ -364,10 +376,9 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
     wrap: preserve
     columns: 120
     reference-location: block
-    ipynb-output: all
   ipynb:
-    cell-format: gfm+tex_math_dollars    # default; see "Markdown flavour for notebooks"
-    drop-jupytext-encoding: true
+    cell-format: gfm-tex_math_gfm    # default; see "Markdown flavour for notebooks"
+    drop-jupytext-encoding: true     # default
   hooks:
     - [jupytext, --sync, --pipe, 'ruff check --select I --fix-only -', --pipe, 'ruff format -', '{path}']
 ```
@@ -379,7 +390,7 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
 - As with pandoc's CLI, the reader's abbreviations (for `smart`) come from pandoc's `abbreviations` data file unless `abbreviations` names a file. The reader's built-in default list is shorter.
 - A file matched by two profiles is an error (0.x formatted it twice, concurrently).
 - Without a config file, `panblack PATH...` uses one profile with those defaults on the given paths.
-- For ipynb profiles, `pandoc.from` is not used; the cell format comes from `ipynb.cell-format`.
+- A file is a notebook if its extension is `.ipynb`. Its cells are read and written in `ipynb.cell-format`, not `pandoc.from`/`to`; the other `pandoc:` keys apply as usual. So one profile can cover notebooks and markdown files alike.
 - `excludes`: gitignore-style globs, matched while walking a listed directory. A trailing `/` matches directories only, a pattern with another `/` is anchored at the config directory, and any other pattern matches a name at any depth. A file listed in `paths` is always included, as in 0.x. `.gitignore` is not read yet (see [Open questions]).
 - `panblack init` prints the recommended defaults for markdown.
 
@@ -387,47 +398,75 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
 
 ## Recommended: format the text side of a jupytext pair
 
-The recommended workflow is to pair each notebook with a text file using jupytext, format the text side with a normal markdown profile, and let `jupytext --sync` carry the changes into the `.ipynb`. jupytext keeps markdown cells verbatim, so panblack never has to write notebook JSON.
+The recommended workflow is to pair each notebook with a markdown file using jupytext, and to format the markdown side with a normal markdown profile. A hook carries the changes into the `.ipynb`, so panblack never has to write notebook JSON.
 
-Rule: **a pair has exactly one side formatted by panblack.** If both sides are in panblack's paths, two serializers fight: panblack formats `.md`, jupytext regenerates `.md` from `.ipynb` in its own form, and the pair may never converge. panblack should detect paired files (from the jupytext metadata in the notebook) and warn when both sides match a profile.
+Rule: **a pair has exactly one side formatted by panblack.** If both sides are in panblack's paths, two serializers fight: panblack formats `.md`, jupytext regenerates `.md` from `.ipynb` in its own form, and the pair never converges. panblack reads the pairing from each notebook it formats (`jupytext.formats` in its metadata) and warns when the other side is formatted too. It resolves formats as jupytext's `paired_paths` does (extensions, suffixes such as `.pct.py`, directory and file-name prefixes), except prefix roots (`notebooks///ipynb`) and formats set only in a jupytext config file.
+
+The same rule applies to the hook: it must write only the notebook side. `jupytext --sync` also rewrites the text side in jupytext's own form (for example ` ```python ` for pandoc's `` ``` python ``), so panblack and jupytext rewrite the file back and forth on every run, and `--check` never passes. Verified with jupytext 1.19.5. Use `--update` instead, which writes the `.ipynb` and keeps its outputs:
+
+```yaml
+- paths: [notebooks]
+  exts: [md]
+  hooks:
+    - [jupytext, --to, ipynb, --update, '{path}']
+```
+
+The markdown side must also have no jupytext YAML header. pandoc rewrites YAML metadata in its own form: `format_version: '1.3'` becomes `format_version: 1.3`, a string becomes a float, and jupytext then fails with a `TypeError`. pandoc reads both the same, so the guard can't see this (see [Limits (by design)]). Set the pairing in `jupytext.toml` instead:
+
+```toml
+formats = "ipynb,md"
+notebook_metadata_filter = "-all"
+```
+
+Code cells can be formatted in the same hook (`--pipe 'ruff format -'`, see [Code formatting: ruff]); ruff then formats the `.ipynb` side only.
 
 ## Best effort: notebooks without a pair
 
 For `.ipynb` files with no pair, panblack formats the notebook directly, as a best effort.
 
-pandoc's ipynb round trip normalizes more than a formatter should. For example, running 0.x with pandoc 3.10.2 on `tests/ipynb/example_1.ipynb` changed `language_info.codemirror_mode.version` from the number `3` to the string `"3"`. Metadata, nbformat minor version, cell ids and attachments are all at risk in the same way, and 0.x already needed the `del_jupytext_encoding` workaround. 1.0 therefore does **cell-level formatting**:
+pandoc's ipynb round trip normalizes more than a formatter should. For example, running 0.x with pandoc 3.10.2 on `tests/ipynb/example_1.ipynb` changed `language_info.codemirror_mode.version` from the number `3` to the string `"3"`. Metadata, nbformat minor version, cell ids and attachments are all at risk in the same way. 1.0 therefore does **cell-level formatting** (`Panblack.Notebook`):
 
-- Parse the JSON with aeson (already a pandoc dependency). Pass only the markdown cells' `source` through the markdown pipeline and leave every other byte untouched. This reuses the same code path as the wasm/editor build.
-- Guard: per cell, plus a whole-notebook check. The whole-notebook check joins all markdown cells (with block separators) into one document, parsed with the *same* cell format, and compares before and after. This catches things that span cells, such as a reference-link definition in another cell, which a per-cell parse would otherwise escape into literal text. panblack implements this check itself instead of going through pandoc's ipynb reader, so the reader and writer always agree on the markdown flavour.
+- The JSON is parsed with aeson (already a pandoc dependency), and only the markdown cells' `source` goes through the markdown pipeline. The new sources are spliced into the original bytes, so every other byte is kept: metadata, outputs, cell ids, number formatting, indentation. A source keeps its shape: a string stays a string; a list of lines stays a list, laid out like the old one. It is written as Jupyter writes JSON (Python's `json.dumps`), with non-ASCII characters escaped only if the file is all ASCII. A final newline is kept or left out as in the original cell, since Jupyter cells usually have none. Carriage returns are removed before reading, as for files.
+- Guard: per cell, plus a whole-notebook check. The whole-notebook check joins all markdown cells (separated by a blank line) into one document, parsed with the *same* cell format, and compares before and after. This catches things that span cells, such as a reference-link definition in another cell, which a per-cell parse would otherwise escape into literal text. That matters wherever the cells are read as one document, such as the markdown side of a jupytext pair. panblack implements this check itself instead of going through pandoc's ipynb reader (which reads each cell on its own), so the reader and writer always agree on the markdown flavour. A failure names the cell (`cell 3: html`, counting all cells from 1) or `all markdown cells`.
+- `ipynb.drop-jupytext-encoding` (default true, as 0.x's `del_jupytext_encoding`) removes `metadata.jupytext.encoding`, also by splicing.
 
-Fallback, if cell-level formatting turns out to be insufficient: a whole-notebook pandoc round trip, as in 0.x.
+Results on 137 distinct notebooks found on the author's machine (tutorials, course material, blog posts), with `check: [source, html]` and `wrap: preserve`, took 0.8 s in all. 61 were reformatted and 63 were already formatted. 12 were rejected, all rightly:
+
+- 9 (copies of one tutorial): display math spanning lines, which pandoc reads differently after formatting.
+- 1: `\\(\sigma\\)`, which the commonmark writer writes without the parentheses ([Upstream issues] 7).
+- 1: a fenced block with the info string `text`, which the commonmark writer drops ([Upstream issues] 8).
+- 1, by the whole-notebook check: footnotes numbered across the notebook (`[^2]` in a later cell). The writer renumbers each cell's footnotes from 1, so joined they collide. Per cell, as JupyterLab and pandoc's ipynb reader see them, the change is harmless.
+
+1 file was not JSON. Every notebook that was in Jupyter's own layout before (131 of them) still is afterwards, code cells, outputs and metadata are unchanged, and a second run changes nothing.
+
+Cell-level formatting is settled: the fallback, a whole-notebook pandoc round trip as in 0.x, is not needed.
 
 ## Markdown flavour for notebooks
 
 In 0.x the flavour was `input_format`, which served as both reader and writer format. For ipynb this meant spelling out the full pandoc-markdown extension list on top of `ipynb`.
 
-Notebook authors usually write for JupyterLab (marked, roughly GFM, plus `$...$` math), not pandoc markdown. So cell markdown gets its own key, `ipynb.cell-format`, defaulting to `gfm+tex_math_dollars`, the pandoc flavour closest to how notebooks are written. Users who process notebooks with pandoc (for example with pannb) can set it to a pandoc-markdown variant.
+Notebook authors usually write for JupyterLab (marked, roughly GFM, plus `$...$` math), not pandoc markdown. So cell markdown gets its own key, `ipynb.cell-format`. It defaults to `gfm-tex_math_gfm`, the pandoc flavour closest to how notebooks are written. `gfm` already reads `$...$` (`tex_math_dollars`), but with `tex_math_gfm` it *writes* all math in GitLab's syntax (`` $`x`$ `` and ```` ```math ```` blocks), which JupyterLab doesn't render. Users who process notebooks with pandoc (for example with pannb) can set it to a pandoc-markdown variant.
 
-Choosing a flavour does not change what is guaranteed. The guard still runs pandoc, so the [Limits] above apply as they do to any other source.
+Choosing a flavour does not change what is guaranteed. The guard still runs pandoc, so the [Limits (by design)] above apply as they do to any other source.
 
 # External hooks
 
-`hooks:` is a list of argv templates run in the CLI after a file is written successfully (`{path}` is substituted). A missing executable gives a clear error and a non-zero exit. There are no hooks in the wasm build. `--check` and `--diff` report panblack's own changes only, and don't run hooks.
+`hooks:` is a list of argv templates, run in order in the config directory after each file is accepted, whether it was changed or already formatted (0.x ran jupytext after every accepted file too). `{path}` is replaced by the file's path relative to the config directory. The first hook that fails stops the rest and gives exit code 3, with its output; a missing executable is reported as `command not found`. Hooks don't run for rejected files, with `--check` or `--diff` (which report panblack's own changes only), with stdin, or in the wasm build.
 
 Hooks are how panblack delegates to the purpose-built tools described in [Delegating to purpose-built tools]. panblack's guard doesn't apply to hooks because they don't need it: the tools carry their own guarantee. It also couldn't apply: a code formatter intends to change code text, which any target-equal check (html renders code blocks) would reject.
 
-Hooks run in order after the write, so `jupytext --sync` sees the freshly written file as the newest one and syncs in the right direction.
+Hooks run after the write, so jupytext sees the freshly written file as the newest one.
 
 ## Code formatting: ruff
 
-The recommended code formatter is ruff, replacing black and isort:
+The recommended code formatter is ruff, replacing black and isort. For a notebook formatted directly:
 
 ```yaml
 hooks:
   - [jupytext, --sync, --pipe, 'ruff check --select I --fix-only -', --pipe, 'ruff format -', '{path}']
 ```
 
-This was verified with jupytext 1.19.5 and ruff: jupytext pipes each notebook through ruff as a py:percent script over stdin. Don't use jupytext's `{}` placeholder with ruff's `-` stdin argument: jupytext then passes a temp file and ruff waits on stdin forever.
+This was verified with jupytext 1.19.5 and ruff 0.16.9: jupytext pipes each notebook through ruff as a py:percent script over stdin, and outputs are kept. Don't use jupytext's `{}` placeholder with ruff's `-` stdin argument: jupytext then passes a temp file and ruff waits on stdin forever. For the markdown side of a pair, add the same `--pipe` arguments to the `--update` hook above.
 
 Differences from the 0.x black + isort setup:
 
@@ -436,7 +475,7 @@ Differences from the 0.x black + isort setup:
 
 Since hooks are plain commands, black and isort (or anything else) stay possible; `panblack init` emits the ruff version.
 
-An alternative is to leave all of this to pre-commit (`panblack` → `jupytext --sync` → `ruff`) and have no hooks. That's simpler, but profiles then no longer describe the whole workflow.
+An alternative is to leave all of this to pre-commit (`panblack` → `jupytext` → `ruff`) and have no hooks. That's simpler, but profiles then no longer describe the whole workflow.
 
 # CLI
 
@@ -504,7 +543,7 @@ Expect a one-time reformat commit per project, because the pandoc version change
 2. Core and CLI for markdown: guard, config, `--check`/`--diff`. Golden tests against the 0.x oracle on real corpora, with both using the same pandoc version.
     - CLI, config and normalizations: **done**. With no normalizations, the output is byte-identical to the pandoc CLI (what 0.x runs) for every formatter option on four documents (pandoc's `testsuite.txt`, `markdown-reader-more.txt` and `MANUAL.txt`, and this doc), for `markdown`, `gfm` and `commonmark_x`. With all of them on, it is byte-identical to pandoc with the Lua prototype on the 24-document corpus.
     - Golden tests: **done**, `haskell/golden/run.sh`. The corpus is pandoc's own markdown, fetched with `cabal get` for the pinned version: `MANUAL.txt`, the top-level `.md` files, the markdown reader tests and the 1090 `test/command/*.md` files, 1102 files in all. 0.x and 1.0 (`normalize: []`) format separate copies under three settings: the defaults; the defaults with `html`; and `wrap: preserve`, `columns: 120`, `reference-location: block` with `html`. Every file comes out byte-identical, except that 0.x drops the final newline. The accept/reject decisions agree too, although 1.0 renders checks differently (see [What a check renders]). The golden run found two differences, both fixed: the pandoc CLI expands tabs before reading, and it takes `smart`'s abbreviations from a data file.
-3. ipynb: pair detection and cell-level formatting, plus hooks.
+3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [ipynb] and [External hooks]). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that the pair workflow needs `jupytext --update` rather than `--sync`, and no jupytext YAML header.
 4. Settle the open questions, then freeze the config schema.
 5. Python `v0.2.0` tag: `export-config` and the deprecation notice.
 6. panblack 1.0: Hackage (see [Publishing]), feedstock packaging, binaries, pre-commit hook. Migrate the dependent projects.
@@ -573,7 +612,7 @@ Nothing here blocks prototyping. Each question has a provisional choice that the
 | Normalizations: option names, defaults, how to turn them off | a `normalize:` list, all on by default, `[]` for none; see [Normalizations] | before freeze |
 | wasm tiers | settled: one tier, `md+html` | spike (step 1), done |
 | `excludes` regex or globs | gitignore-style globs (done); whether to read `.gitignore` is still open | usage on real repos |
-| ipynb: cell-level or whole-notebook round trip | cell-level | step 3 |
+| ipynb: cell-level or whole-notebook round trip | settled: cell-level (see [Best effort: notebooks without a pair]) | step 3, done |
 | Hooks or pre-commit only | hooks | usage |
 | Licence: GPL-2.0-or-later (like pandoc and pandoc-crossref) or keep BSD-3 | GPL-2.0-or-later; see [Licence] | before the repo is public |
 | Config filename and discovery | `.panblack.yaml`, walk up to the repo root | before freeze |

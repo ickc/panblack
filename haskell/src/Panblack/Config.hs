@@ -16,6 +16,7 @@ module Panblack.Config
   ) where
 
 import Control.Exception (IOException, try)
+import Control.Monad (when)
 import Data.Aeson (Object, Value (..), (.!=), (.:?))
 import Data.Aeson qualified as A
 import Data.Aeson.Key qualified as K
@@ -52,6 +53,12 @@ data ProfileConfig = ProfileConfig
   -- ^ A pandoc defaults file, relative to the config file. The inline
   -- 'pcPandoc' keys override it.
   , pcPandoc :: Object
+  , pcCellFormat :: Text
+  -- ^ The markdown flavour of notebook cells; @pandoc.from@ and @to@ are
+  -- for the other files.
+  , pcDropJupytextEncoding :: Bool
+  , pcHooks :: [[Text]]
+  -- ^ Commands run on each accepted file, @{path}@ substituted.
   }
   deriving stock (Eq, Show)
 
@@ -67,6 +74,9 @@ defaultProfileConfig =
     , pcNormalize = [minBound .. maxBound]
     , pcDefaults = Nothing
     , pcPandoc = KM.empty
+    , pcCellFormat = "gfm-tex_math_gfm"
+    , pcDropJupytextEncoding = True
+    , pcHooks = []
     }
 
 -- | Parse a config file's contents. Unknown keys are errors.
@@ -85,6 +95,10 @@ parseConfig bs = do
     normalize <- o .:? "normalize" >>= maybe (pure (pcNormalize d)) (traverse (normalizationNamed where'))
     pandoc <- o .:? "pandoc" .!= KM.empty
     unknownKeys (where' <> "pandoc: ") pandocKeys pandoc
+    ipynb <- o .:? "ipynb" .!= KM.empty
+    unknownKeys (where' <> "ipynb: ") ["cell-format", "drop-jupytext-encoding"] ipynb
+    hooks <- o .:? "hooks" .!= []
+    when (any null hooks) $ fail (where' <> "hooks: a command can't be empty")
     ProfileConfig paths
       <$> o .:? "exts" .!= pcExts d
       <*> o .:? "excludes" .!= pcExcludes d
@@ -92,6 +106,9 @@ parseConfig bs = do
       <*> pure normalize
       <*> o .:? "defaults"
       <*> pure pandoc
+      <*> ipynb .:? "cell-format" .!= pcCellFormat d
+      <*> ipynb .:? "drop-jupytext-encoding" .!= pcDropJupytextEncoding d
+      <*> pure hooks
   normalizationNamed where' name =
     maybe
       ( fail $
@@ -102,7 +119,7 @@ parseConfig bs = do
       (normalizationByName name)
 
 profileKeys :: [Text]
-profileKeys = ["paths", "exts", "excludes", "check", "normalize", "defaults", "pandoc"]
+profileKeys = ["paths", "exts", "excludes", "check", "normalize", "defaults", "pandoc", "ipynb", "hooks"]
 
 -- | The pandoc options a profile may set: those that change how the source
 -- is read, or how the writer spells the document. Anything else (output

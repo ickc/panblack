@@ -16,6 +16,7 @@ module Panblack.Guard
   , GuardFailure (..)
   , CheckDiff (..)
   , format
+  , compareSources
   ) where
 
 import Data.Text (Text)
@@ -79,18 +80,30 @@ format :: Profile -> Text -> Either GuardFailure Formatted
 format profile src = either (Left . PandocFailed) id . runPure $ do
   before <- profileRead profile src
   out <- profileWrite profile before
+  fmap (Formatted out) <$> judge profile before out
+
+-- | Whether pandoc reads a second source the same as the first, as seen by
+-- every check. For a result assembled from parts, such as the markdown cells
+-- of a notebook, which must pass as a whole.
+compareSources :: Profile -> Text -> Text -> Either GuardFailure Accepted
+compareSources profile src out = either (Left . PandocFailed) id . runPure $ do
+  before <- profileRead profile src
+  judge profile before out
+
+judge :: Profile -> Pandoc -> Text -> PandocPure (Either GuardFailure Accepted)
+judge profile before out = do
   after <- profileRead profile out
   if before == after
-    then pure . Right $ Formatted out AstEqual
+    then pure (Right AstEqual)
     else do
-      diffs <- traverse (renderBoth before after) checks
+      diffs <- traverse (renderBoth after) checks
       pure $ case [d | d <- diffs, diffBefore d /= diffAfter d] of
-        [] -> Right . Formatted out . ChecksPassed $ map checkName checks
+        [] -> Right . ChecksPassed $ map checkName checks
         failed -> Left $ ChecksFailed before after failed
  where
   checks = profileChecks profile
   -- 0.x compared renders with surrounding whitespace stripped.
-  renderBoth before after c =
+  renderBoth after c =
     CheckDiff (checkName c)
       <$> (T.strip <$> checkRender c before)
       <*> (T.strip <$> checkRender c after)

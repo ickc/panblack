@@ -48,8 +48,10 @@ library
     Panblack.Diff
     Panblack.Discover
     Panblack.Guard
+    Panblack.Jupytext
     Panblack.Markdown
     Panblack.Normalize
+    Panblack.Notebook
     Panblack.Target.Html
     Panblack.Target.Registry
 
@@ -61,10 +63,12 @@ executable panblack
   autogen-modules:  Paths_panblack
   build-depends:
     , panblack
+    , aeson
     , bytestring
     , containers
     , directory
     , filepath
+    , process       >=1.6 && <1.7
   ghc-options:      -threaded -rtsopts
 
 test-suite spec
@@ -75,6 +79,7 @@ test-suite spec
   build-depends:
     , panblack
     , aeson
+    , bytestring
 
 -- Editor-build spike (plan step 1). Build with cabal.project.wasm.
 executable panblack-wasm-md
