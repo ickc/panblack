@@ -200,7 +200,7 @@ With the [Normalizations] below added and `smart` off, the same settings give **
 
 ## Normalizations
 
-A normalization is applied to the AST right after every read, on the original and on the formatted source alike. So the checks compare normalized documents, and the formatted source is written from a normalized AST. Each one gives up pandoc-relative equality for something that is, in practice, an accident of the source or of the writer: the html of your own pandoc run can change in the stated way. Each is a separate option, listed by name in a profile's `normalize:` key. None is on by default, so the default is pandoc-relative equality with no exceptions. The happy case assumes all of them are on, and `panblack init` writes them all (see [Config]). Implementation: `Panblack.Normalize`. Its output matches the Lua prototype (`haskell/experiments/normalize.lua`) byte for byte on the 24 documents of the corpus below.
+A normalization is applied to the AST right after every read, on the original and on the formatted source alike. So the checks compare normalized documents, and the formatted source is written from a normalized AST. Each one gives up pandoc-relative equality for something that is, in practice, an accident of the source or of the writer: the html of your own pandoc run can change in the stated way. Each is a separate option, listed by name in a profile's `normalize:` key. All are on by default; `normalize: []` turns them off and gives pandoc-relative equality with no exceptions, as in 0.x (see [Migration from 0.x]). On the golden corpus (see [Plan]) with the recommended settings, they raise the accepted files from 675 to 864 of 1102. Implementation: `Panblack.Normalize`. Its output matches the Lua prototype (`haskell/experiments/normalize.lua`) byte for byte on the 24 documents of the corpus below.
 
 | Normalization (`normalize:` name) | What changes in your own html | Why |
 |---|---|---|
@@ -375,12 +375,13 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
 - `pandoc:` is parsed by pandoc's own defaults-file parser, after checking that it only uses the options in [Formatter options]: `from`/`reader`, `to`/`writer`, `columns`, `tab-stop`, `indented-code-classes`, `abbreviations`, `wrap`, `markdown-headings`, `reference-links`, `reference-location`, `ascii` and `eol`. Anything else is an error (`output-file`, `filters`, `standalone`, ...). So is an unknown key anywhere in the config. `to` defaults to `from` and may differ only in extensions (see [Tables]).
 - `defaults:` names a pandoc defaults file, relative to the config file, with the same restriction. The inline `pandoc:` keys override it. It can't include further defaults files. `abbreviations` is also relative to the config file (pandoc's CLI resolves it relative to the working directory).
 - `eol` (`lf`, `crlf`, `native`; pandoc's default is `native`) sets the line endings written. As with the pandoc CLI, input is read with carriage returns and a byte-order mark removed and tabs expanded, so a CRLF file is rewritten with LF under the default.
-- Defaults are 0.x's: `exts: [md, markdown]`, `excludes: [.git/, .pytest_cache/]`, `check: [source]`, no normalizations, and pandoc's own defaults for `pandoc:`.
+- Defaults are 0.x's: `exts: [md, markdown]`, `excludes: [.git/, .pytest_cache/]`, `check: [source]`, and pandoc's own defaults for `pandoc:`. The exception is `normalize:`, which defaults to all of them.
+- As with pandoc's CLI, the reader's abbreviations (for `smart`) come from pandoc's `abbreviations` data file unless `abbreviations` names a file. The reader's built-in default list is shorter.
 - A file matched by two profiles is an error (0.x formatted it twice, concurrently).
 - Without a config file, `panblack PATH...` uses one profile with those defaults on the given paths.
 - For ipynb profiles, `pandoc.from` is not used; the cell format comes from `ipynb.cell-format`.
 - `excludes`: gitignore-style globs, matched while walking a listed directory. A trailing `/` matches directories only, a pattern with another `/` is anchored at the config directory, and any other pattern matches a name at any depth. A file listed in `paths` is always included, as in 0.x. `.gitignore` is not read yet (see [Open questions]).
-- `panblack init` prints the recommended defaults for markdown, with every normalization on.
+- `panblack init` prints the recommended defaults for markdown.
 
 # ipynb
 
@@ -483,6 +484,7 @@ panblack 0.x was never published to PyPI or conda-forge; users install it from t
 |---|---|
 | `input_format` | `pandoc.from`; for ipynb profiles, `ipynb.cell-format` (with the `ipynb` prefix removed) |
 | `require_idempotence_format` | `check`, same meaning. The `"input_format"` entry becomes `source`. |
+| (none: 0.x has no normalizations) | `export-config` writes `normalize: []`, so the output stays as 0.x's. Remove it to get the default normalizations. |
 | `paths`, `exts` | unchanged |
 | `excludes` (regex) | `excludes` (see [Open questions]) |
 | `pandoc_args` | `pandoc:` keys, e.g. `--wrap=preserve` → `wrap: preserve`. `--sandbox` is dropped (always on). Unknown args cause an error with a pointer to the docs. |
@@ -492,7 +494,7 @@ panblack 0.x was never published to PyPI or conda-forge; users install it from t
 | `processes`, `mode` | `-j` |
 | `toml_path`, `save*` | `--config`, `panblack init` |
 
-Expect a one-time reformat commit per project, because the pandoc version changes.
+Expect a one-time reformat commit per project, because the pandoc version changes. 0.x also wrote files without a final newline (panflute's `convert_text` strips pandoc's output), and 1.0 adds it back.
 
 # Plan
 
@@ -501,7 +503,7 @@ Expect a one-time reformat commit per project, because the pandoc version change
     - 1b. Tables (see [Tables]), in parallel with the spike. **Done** for the synthetic set; real corpora in step 2.
 2. Core and CLI for markdown: guard, config, `--check`/`--diff`. Golden tests against the 0.x oracle on real corpora, with both using the same pandoc version.
     - CLI, config and normalizations: **done**. With no normalizations, the output is byte-identical to the pandoc CLI (what 0.x runs) for every formatter option on four documents (pandoc's `testsuite.txt`, `markdown-reader-more.txt` and `MANUAL.txt`, and this doc), for `markdown`, `gfm` and `commonmark_x`. With all of them on, it is byte-identical to pandoc with the Lua prototype on the 24-document corpus.
-    - Golden tests on real corpora: next.
+    - Golden tests: **done**, `haskell/golden/run.sh`. The corpus is pandoc's own markdown, fetched with `cabal get` for the pinned version: `MANUAL.txt`, the top-level `.md` files, the markdown reader tests and the 1090 `test/command/*.md` files, 1102 files in all. 0.x and 1.0 (`normalize: []`) format separate copies under three settings: the defaults; the defaults with `html`; and `wrap: preserve`, `columns: 120`, `reference-location: block` with `html`. Every file comes out byte-identical, except that 0.x drops the final newline. The accept/reject decisions agree too, although 1.0 renders checks differently (see [What a check renders]). The golden run found two differences, both fixed: the pandoc CLI expands tabs before reading, and it takes `smart`'s abbreviations from a data file.
 3. ipynb: pair detection and cell-level formatting, plus hooks.
 4. Settle the open questions, then freeze the config schema.
 5. Python `v0.2.0` tag: `export-config` and the deprecation notice.
@@ -568,7 +570,7 @@ Nothing here blocks prototyping. Each question has a provisional choice that the
 |---|---|---|
 | AST normalization before comparing (speed only) | none; measure fast-path hit rate | golden corpus (step 2) |
 | Default table settings | `from`/`to: markdown-simple_tables-multiline_tables`, `wrap: preserve`, widths reset (see [Recommended defaults for `markdown`]) | step 2 corpora |
-| Normalizations: option names, defaults, how to turn them off | a `normalize:` list, empty by default; `init` turns all on; see [Normalizations] | before freeze |
+| Normalizations: option names, defaults, how to turn them off | a `normalize:` list, all on by default, `[]` for none; see [Normalizations] | before freeze |
 | wasm tiers | settled: one tier, `md+html` | spike (step 1), done |
 | `excludes` regex or globs | gitignore-style globs (done); whether to read `.gitignore` is still open | usage on real repos |
 | ipynb: cell-level or whole-notebook round trip | cell-level | step 3 |

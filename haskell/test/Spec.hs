@@ -78,9 +78,11 @@ main = do
 
   -- Config
   let parsed = parseConfig
-  check "config: defaults as 0.x" $
+  check "config: defaults as 0.x, with every normalization" $
     fmap (map (\p -> (pcExts p, pcCheck p, pcNormalize p))) (parsed "- paths: [a]\n")
-      == Right [(["md", "markdown"], ["source"], [])]
+      == Right [(["md", "markdown"], ["source"], [minBound .. maxBound])]
+  check "config: normalize: [] turns them off" $
+    fmap (map pcNormalize) (parsed "- paths: [a]\n  normalize: []\n") == Right [[]]
   check "config: normalize and pandoc keys" $
     fmap (map (\p -> (pcNormalize p, KM.size (pcPandoc p)))) (parsed "- paths: [a]\n  normalize: [table-widths]\n  pandoc: {wrap: preserve, columns: 80}\n")
       == Right [([TableWidths], 2)]

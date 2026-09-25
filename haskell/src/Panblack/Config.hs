@@ -36,7 +36,9 @@ import Panblack.Normalize (Normalization, normalizationByName, normalizationName
 import Panblack.Target.Registry (targetByName)
 import System.FilePath ((</>))
 import Text.Pandoc.App (LineEnding (..), Opt (..), defaultOpts)
-import Text.Pandoc.Error (PandocError)
+import Text.Pandoc.Class (runIO)
+import Text.Pandoc.Data (readDataFile)
+import Text.Pandoc.Error (PandocError, renderError)
 import Text.Pandoc.Options (ReaderOptions (..), WriterOptions (..), def)
 
 data ProfileConfig = ProfileConfig
@@ -53,7 +55,8 @@ data ProfileConfig = ProfileConfig
   }
   deriving stock (Eq, Show)
 
--- | 0.x's defaults, used when there is no config file.
+-- | The defaults: 0.x's, plus every normalization. Also used when there is
+-- no config file.
 defaultProfileConfig :: ProfileConfig
 defaultProfileConfig =
   ProfileConfig
@@ -61,7 +64,7 @@ defaultProfileConfig =
     , pcExts = ["md", "markdown"]
     , pcExcludes = [".git/", ".pytest_cache/"]
     , pcCheck = ["source"]
-    , pcNormalize = []
+    , pcNormalize = [minBound .. maxBound]
     , pcDefaults = Nothing
     , pcPandoc = KM.empty
     }
@@ -74,12 +77,12 @@ parseConfig bs = do
  where
   parseProfiles = A.withArray "list of profiles" $ \arr ->
     traverse (uncurry parseProfile) (zip [1 :: Int ..] (foldr (:) [] arr))
+  d = defaultProfileConfig
   parseProfile i = A.withObject ("profile " <> show i) $ \o -> do
     let where' = "profile " <> show i <> ": "
     unknownKeys where' profileKeys o
-    let d = defaultProfileConfig
     paths <- o .:? "paths" .!= []
-    normalize <- (o .:? "normalize" .!= ([] :: [Text])) >>= traverse (normalizationNamed where')
+    normalize <- o .:? "normalize" >>= maybe (pure (pcNormalize d)) (traverse (normalizationNamed where'))
     pandoc <- o .:? "pandoc" .!= KM.empty
     unknownKeys (where' <> "pandoc: ") pandocKeys pandoc
     ProfileConfig paths
@@ -162,11 +165,12 @@ loadSettings root pc = do
   case fromFile >>= optsFrom . (pcPandoc pc `KM.union`) of
     Left e -> pure (Left e)
     Right opt -> do
-      abbrevs <- case optAbbreviations opt of
-        Nothing -> pure (Right (readerAbbreviations def))
-        Just path ->
-          fmap (Set.fromList . filter (not . T.null) . T.lines . TE.decodeUtf8Lenient)
-            <$> readFileE (root </> path)
+      -- Like pandoc's CLI: its @abbreviations@ data file (longer than the
+      -- reader's built-in default list), unless a file is given.
+      abbrevs <-
+        fmap (Set.fromList . filter (not . T.null) . T.lines . TE.decodeUtf8Lenient) <$> case optAbbreviations opt of
+          Nothing -> first renderError <$> runIO (readDataFile "abbreviations")
+          Just path -> readFileE (root </> path)
       pure $ settings opt <$> abbrevs
  where
   optsFrom o = first aesonError $ ($ defaultOpts) <$> parseEither A.parseJSON (Object o)
@@ -214,8 +218,9 @@ starterConfig =
     , "  # A file is written only if pandoc renders it the same before and after"
     , "  # for every check. `source` means a second run changes nothing."
     , "  check: [source, html]"
-    , "  # Each normalization accepts one kind of change to your own pandoc output."
-    , "  normalize: [" <> T.intercalate ", " (map normalizationName [minBound .. maxBound]) <> "]"
+    , "  # Normalizations each accept one kind of change to your own pandoc output."
+    , "  # All are on by default; list the ones you want, or [] for none:"
+    , "  # normalize: [" <> T.intercalate ", " (map normalizationName [minBound .. maxBound]) <> "]"
     , "  # An inline pandoc defaults file. Reading options must match how you run pandoc."
     , "  pandoc:"
     , "    from: markdown-simple_tables-multiline_tables-smart"
