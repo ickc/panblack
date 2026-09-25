@@ -20,6 +20,10 @@ pandoc is a converter, not a formatter. Its readers don't model the source forma
 
 panblack adds the promise through a guard: after formatting, **pandoc must produce the same result from the formatted source as from the original** (see [Terminology] for what "same" means). The guarantee is therefore relative to pandoc as the processor. It holds when pandoc is the tool that consumes your sources.
 
+## Judge the result, not the round trip
+
+Making a pandoc round trip exact is a known hard problem. pandoc's own testing of `markdown → AST → markdown` finds cases that never settle, for example an escape character added on every pass. panblack does not try to solve it. It side-steps it by looking at what you actually get: if what you care about is markdown → html, then all a formatter must guarantee is that the formatted markdown gives you the same html. The checks (see [Terminology]) ask exactly that. The source and the formatted source may differ in pandoc's AST, and even in how a second formatting pass would write them, as long as every check you asked for renders them the same. Choosing the checks is choosing what "the same" means for your project.
+
 ## Limits (by design)
 
 If something other than pandoc consumes your source (JupyterLab, nbconvert, GitHub, MkDocs, ...), panblack promises nothing about how that tool sees the result. The guard runs pandoc, not your processor, so a change pandoc considers equivalent may still change the output elsewhere. This is inherent to the approach. panblack does not try to model other processors or work around their differences from pandoc. If you don't process your sources with pandoc, use a formatter built on the same parser as your processor.
@@ -35,18 +39,32 @@ Non-goals, therefore:
 
 # Terminology
 
-0.x used "idempotence" for two different checks. 1.0 separates them:
+1.0 keeps 0.x's semantics (`require_idempotence_format`) and names the parts. `fmt(x) = write(parse(x))`.
+
+check
+:   A format `t` to render to. It passes when `render(parse(x), t) == render(parse(fmt(x)), t)`, compared with surrounding whitespace stripped, as in 0.x. A profile lists its checks in `check`, and **a file is written only if every listed check passes.** An empty list accepts any output, as 0.x did.
 
 stability
-:   `fmt(fmt(x)) == fmt(x)`. The formatter reaches a fixed point. In 0.x this was `require_idempotence_format = ["input_format"]` (the default).
+:   The check named `source`: render with the profile's own writer. Because `render(parse(x), source) == fmt(x)`, it checks `fmt(fmt(x)) == fmt(x)`, i.e. that a second run changes nothing. This was 0.x's `"input_format"` entry, and it is the default (`check: [source]`), as in 0.x. Like any check it can be left out: with `check: [html]`, a result whose html is unchanged is accepted even if a second run would write it differently.
 
 preservation
-:   pandoc treats the original and the formatted source the same. This is the guard. It has two strengths:
+:   A check on a target format (html, latex, ...): pandoc renders the original and the formatted source the same. This is the relaxed rule from the 0.x README: the source is what you convert *to* those targets, so identical targets are what matters.
 
-    - **AST-equal**: `parse(x) == parse(fmt(x))`. Strict, and cheap because it needs no extra writer.
-    - **target-equal**: `render(parse(x), t) == render(parse(fmt(x)), t)` for every configured target `t` (html, latex, ...). This is the relaxed rule from the 0.x README: the source is what you convert *to* those targets, so identical targets are what matters.
+AST-equal
+:   `parse(x) == parse(fmt(x))`. Not a requirement, a shortcut: if it holds, every check passes without being run.
 
-A file is written only if it passes preservation. Stability is checked too; a failure is reported as a panblack bug, or as a pandoc bug worth filing upstream.
+A failed check rejects the file (exit code 2, see [CLI]); 0.x only logged a warning and exited 0.
+
+## What a check renders
+
+A check asks whether pandoc understands the formatted source the same way, seen through a target format. It is not the user's own output configuration. So a check renders with pandoc's defaults for that target, independent of the profile's `pandoc:` options, with two exceptions:
+
+- The template is the metadata plus the body (`$meta-json$` and `$body$`). `meta-json` holds all metadata as rendered by the target writer, so a change to any field is caught. A standalone template would show only the fields it uses (title, author, date, ...).
+- Line wrapping is off, because where the target breaks lines doesn't change what it means.
+
+Extensions of the target can be set in the check's name as usual, e.g. `check: [source, html, latex-smart]`.
+
+0.x rendered checks with the profile's pandoc arguments and the target's standalone template. The only effect of the difference is on what counts as "the same": 1.0 compares what pandoc understands, and doesn't fail because of how the target is configured to look.
 
 # Guard algorithm
 
@@ -54,15 +72,15 @@ A file is written only if it passes preservation. Stability is checked too; a fa
 A   = parse(src)
 out = write(A)
 A'  = parse(out)
-if A == A'                          -> preserved (fast path; no target writers run)
-elif all(render(A,t) == render(A',t) for t in targets) -> preserved
-else                                -> reject, report a diff (AST diff and/or target diff)
-# stability: write(A') == out, which is cheap because A' is already parsed
+if A == A'                                             -> accept (fast path; no checks run)
+elif all(strip(render(A,c)) == strip(render(A',c)) for c in checks) -> accept
+else                                                   -> reject, report the failed checks
+# render(_, source) = write, so the stability check reuses the parsed A and A'
 ```
 
-Compared with 0.x (1 + 2N pandoc processes, each re-parsing), this parses twice, writes once, and runs the target writers only when the fast path fails.
+Compared with 0.x (1 + 2N pandoc processes, each re-parsing), this parses twice, writes once, and runs the checks only when the fast path fails.
 
-Open question: AST equality may need a small normalization pass first, for example merging adjacent `Str` or `Space`, or ignoring a table column width drift. Measure the fast-path hit rate on real corpora before deciding.
+Since AST equality is only a shortcut, normalizing the AST before comparing (e.g. merging adjacent `Str`) would only make the fast path hit more often. As long as the normalization is safe, it can't change what is accepted. Measure the hit rate on real corpora before deciding whether that is worth doing.
 
 # Architecture
 
@@ -80,13 +98,247 @@ Open question: AST equality may need a small normalization pass first, for examp
 ## `panblack-wasm` (editor build)
 
 - Imports concrete readers and writers directly (`Text.Pandoc.Readers.Markdown`, `Text.Pandoc.Writers.Markdown`, optionally `Writers.HTML`), never `Text.Pandoc.App` or the reader/writer registries. `-split-sections` plus linker GC can then drop the unused formats.
-- Tiers:
-    - `md`: markdown reader and writer, AST-equal guard only.
-    - `md+html`: adds the target-equal fallback for html. Watch the cost of skylighting's syntax definitions, which the HTML writer pulls in.
+- One tier, `md+html`: the markdown reader and writer, with checks `source` and `html`. pandoc's Markdown writer imports the HTML writer itself (for tables markdown can't express), so a markdown-only build is no smaller (see the spike results below).
 - A guard failure makes the editor skip formatting and show a diagnostic. The guard is never dropped.
 - Target use is format on save, so latency needs to be interactive, not per-keystroke.
 
-Spike first: check that a markdown-only pandoc links on the GHC wasm backend, and record its size against the full pandoc-wasm.
+Spike results (plan step 1, `haskell/wasm/`, GHC 9.12.4 wasm backend):
+
+- Stock Hackage pandoc 3.10.2 builds for wasm; no fork, so the exact version pin holds. The output is byte-identical to the native build.
+- Size: 24.7 MB after `wasm-opt -Oz`, 6.2 MB gzipped. The full pandoc.org `pandoc.wasm` is 59 MB. The `md` and `md+html` tiers came out the same size, and building every package with `split-sections` changed nothing: the linker already drops unreachable code, and what is left is reachable. Most of it is static data (13 MB); among named code the largest are texmath, emojis and commonmark, all used by the markdown reader and writer. Going smaller would need changes in pandoc.
+- Latency on this 321-line doc: 0.16 s under wasmtime (precompiled); under node, 38 ms to compile, 245 ms for the first run, then about 175 ms. A one-line file takes 0.01 s. Fine for format-on-save.
+- The host must pass a program name in `argv`; with an empty `argv` the GHC runtime exits with code 71.
+
+Toolchain: [ghc-wasm-meta](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta), installed as in [pandoc-wasm's CI](https://github.com/haskell-wasm/pandoc-wasm/blob/master/.github/workflows/build.yml) (download the archive, `FLAVOUR=9.12 ./setup.sh`), plus native `alex` and `happy`. `cabal.project.wasm` mirrors the `if arch(wasm32)` block of pandoc 3.10.2's own `cabal.project`: pandoc with `-http +embed_data_files`, and five patched dependencies whose patches are copied from pandoc's `wasm/patches` into `haskell/wasm/patches`. (The older pandoc-wasm fork, `haskell-wasm/pandoc`, is stale and not needed.)
+
+# Formatter options
+
+Which pandoc options make sense for a formatter. The list is taken from pandoc 3.10.2's source: the `ReaderOptions` fields that the Markdown and CommonMark readers use, and the `WriterOptions` fields that the Markdown writer uses.
+
+## Formats and their table extensions
+
+| Format | Table extensions (`+` on by default) |
+|---|---|
+| `markdown` | `+simple_tables +multiline_tables +grid_tables +pipe_tables +table_captions +table_attributes` |
+| `commonmark` | `-pipe_tables` |
+| `commonmark_x` | `+pipe_tables` |
+| `gfm` | `+pipe_tables` |
+
+The CommonMark family has only pipe tables, so most of [Tables] concerns `markdown` only.
+
+## Style: how the same document is written
+
+These only change how the writer spells the AST. They are the formatter's knobs.
+
+| pandoc option | Effect |
+|---|---|
+| `to` (extensions only) | Which syntax the writer may use: table syntaxes, `four_space_rule` (list indentation), `fenced_code_blocks`/`backtick_code_blocks`, `space_in_atx_header`, ... Same flavour as `from`. |
+| `wrap` | `auto` reflows paragraphs, `preserve` keeps source line breaks, `none` puts each paragraph on one line |
+| `columns` | line length for `wrap: auto`, and table layout in every wrap mode |
+| `markdown-headings` | `atx` (`#`) or `setext` (underlined) |
+| `reference-links` | reference-style links instead of inline links |
+| `reference-location` | where notes and reference definitions go: `block`, `section` or `document` |
+| `ascii` | write non-ASCII characters as entities |
+
+Line endings (`eol`) are handled by the CLI, not by pandoc's writer.
+
+## Reading: must match how you run pandoc
+
+These change what the source *means*, so they must be the same as in your own pandoc invocation, or the guarantee is about the wrong reading.
+
+| pandoc option | Effect |
+|---|---|
+| `from` (+ extensions) | the flavour and syntax recognised |
+| `columns` | also a reader option: a pipe table gets relative widths when a line is longer than it, and grid/multiline widths are computed relative to it. pandoc's CLI uses one `--columns` for both, and panblack does the same. |
+| `tab-stop` | tab expansion when reading (and indentation when writing) |
+| `indented-code-classes` | classes given to indented code blocks |
+| `abbreviations` | where `smart` puts non-breaking spaces |
+
+## Rejected
+
+- `strip-comments`: it would delete HTML comments from the source.
+- `default-image-extension`: it would rewrite image paths in the source.
+- `toc`, `toc-depth`, `number-sections`, `id-prefix`, `variables`, `template`, `standalone`, `html-math-method`, `syntax-definition`: these add or decorate content. The markdown writer only uses them in its template or in raw-HTML fallbacks.
+- `output-file`, filters, and everything else that isn't a reader or writer option.
+
+## Recommended defaults for `markdown`
+
+Assuming table widths are reset (see [Tables]; an option whose name and default are still open):
+
+```yaml
+pandoc:
+  from: markdown-simple_tables-multiline_tables-smart
+  to: markdown-simple_tables-multiline_tables-smart
+  wrap: preserve
+  columns: 72                                   # pandoc's default
+check: [source, html]
+```
+
+Everything else stays at pandoc's defaults (`markdown-headings: atx`, inline links, `reference-location: document`, `tab-stop: 4`). These are pure style and don't affect what the guard accepts. Your 0.x configs used `reference-location: block`.
+
+**No `smart`.** Typography is left to production: keep `smart` in your own pandoc runs, but format without it. With `smart`, the writer rewrites what you typed: curly quotes and apostrophes become straight ones, and an invisible non-breaking space (U+00A0) goes after abbreviations such as `p.` and `Mr.` (see [Upstream issues] 5). Without it, the text is kept exactly as typed. On the corpus, every file accepted without `smart` also renders the same html when read *with* `smart`: `smart` only changes how text is typeset, and formatting without it doesn't touch the text.
+
+**Only grid and pipe tables.** The happy case assumes sources have no simple or multiline tables; see [Known limitations]. They are disabled for reading as well as writing, and grid and pipe tables are what people mostly use in the wild anyway.
+
+Why, from runs on the corpus described in [Stability of the candidate defaults], at 72 columns with widths reset:
+
+| `from` | `to` (writer tables) | wrap | html | settled after 1 round | never settles | written files stable after 1 round |
+|---|---|---|---|---|---|---|
+| grid + pipe | grid + pipe | `preserve` | **22/30** | 29/30 | 0 | **22/22** |
+| all | grid + pipe | `preserve` | 20/30 | 27/30 | 0 | 20/20 |
+| all | grid + pipe | `auto` | 22/30 | 29/30 | 1 | 22/22 |
+| all | grid only | `preserve` | 22/30 | 26/30 | 0 | 18/22 |
+| all | grid only | `auto` | 22/30 | 29/30 | 1 | 22/22 |
+| all | pipe only | `preserve` | 16/30 | 18/30 | 0 | 16/16 |
+| all | pipe only | `auto` | 18/30 | 20/30 | 1 | 18/18 |
+
+- **Eight html failures are common to every row.** They are writer losses unrelated to tables (see [Other writer losses]), so 22/30 is the most any table setting can reach here.
+- **`wrap: auto`** can loop forever on the escape problem. A reflowed line starting with `71.` gets escaped, and the escape moves the break. It happened in this corpus at 72 and 100 columns, and one of the two alternating versions can even render different html. Any prose can hit it, which is exactly the "save and it keeps changing" case. `auto` also rewrites every paragraph of an existing file.
+- **Pipe tables only** lose every table that needs a grid table (block content, multi-line cells).
+
+With the [Normalizations] below added and `smart` off, the same settings give **html 30/32 and 32/32 settled after one round**. That is on the corpus plus two new grid tables: one with a wrapped cell, and one with block content in a cell. The two remaining failures are example lists and `#.` lists ([Known limitations]), plus a link bug ([Upstream issues] 6) in the same file.
+
+## Normalizations
+
+A normalization is applied to the AST right after every read, on the original and on the formatted source alike. So the checks compare normalized documents, and the formatted source is written from a normalized AST. Each one gives up pandoc-relative equality for something that is, in practice, an accident of the source or of the writer: the html of your own pandoc run can change in the stated way. Each is a separate option. The happy case assumes all of them are on; names, defaults and how to turn them off are open (see [Open questions]). Prototype: `haskell/experiments/normalize.lua`.
+
+| Normalization | What changes in your own html | Why |
+|---|---|---|
+| **Reset table widths** | column widths (`<col style="width: …">`) | Widths come from dash lengths and `columns`, and the writer can't reproduce them. See [Tables]. |
+| **Line breaks in table cells become spaces** | nothing visible (a newline becomes a space in the html source) | With widths reset, the writer may choose a pipe table for a grid table with wrapped cells, and with `wrap: preserve` it writes the line breaks into the pipe row, which gives an invalid table ([Upstream issues] 1). The table is laid out again anyway. Code blocks, code spans and math aren't affected, since they don't contain line-break elements. |
+| **Strip leading and trailing blank lines in code blocks** | those blank lines inside `<pre>` | A code block without attributes is always written as indented code, which can't hold them ([Upstream issues] 2). They are usually accidental, e.g. the padding rows of a grid cell falling inside a fence. |
+| **Bare text directly inside a div becomes a paragraph** | a `<p>` inside such divs | `<div>text</div>` on one line reads as bare text, and no div syntax the writer has can write that back: both fenced divs and raw `<div>` put the content on its own lines. This is a limitation of the syntax, not a bug. |
+| **Drop empty `<!-- -->` comments** | the empty comment disappears | The writer inserts `<!-- -->` to separate a list from a following indented code block or list. That would be a new block in the html. The writer puts it back wherever it is needed, so the formatted source still reads correctly. |
+
+Potential problems considered for the table-cell normalization: a cell with a paragraph followed by a list and a code block, one with a hard line break (`\`), and one with inline math and a code span that wrap across lines. These are all in `grid_blocks_wrapped.md`, which passes both checks. Hard breaks are a different element and are kept. The `east_asian_line_breaks` extension removes its line breaks while reading, so it doesn't interact.
+
+## Known limitations
+
+These are cases the happy case excludes. The guard may still accept such files, but the result isn't what you'd want:
+
+- **Simple and multiline tables.** With the recommended `from`, they aren't tables at all: the dashed line makes the header row a setext heading, and the rows become paragraphs. The guard can't notice, because it compares under the same reader. Convert them to grid or pipe tables first, and use the same `from` in your own pandoc runs.
+- **Example lists** (`(@)`, `(@label)`). The writer writes them as `(1)`, `(2)`, so they become ordinary lists and the guard rejects the file ([Upstream issues] 3). Even with that fixed, labels can't survive: the reader numbers the list and replaces each reference `(@label)` with the literal number, e.g. `(2)`, so the label never reaches the AST. The html would be unchanged, so the guard couldn't notice. The `example_lists` extension stays on: the writer never produces example lists, and turning the extension off would silently make existing ones plain text.
+- **Autonumbered `#.` lists.** The writer writes them as `1.`, which changes the list style, so the guard rejects the file ([Upstream issues] 4). This can't be turned off by itself: `#.` belongs to `fancy_lists`, which also provides `a)`, `i.` and similar lists. A normalization that writes `#.` as `1.` works (30/32 becomes 31/32 on the corpus), but it isn't invisible. In LaTeX, a nested `#.` list gets LaTeX's own second-level label `(a)`, and after the normalization it gets `1.`. So it stays out of the happy case until the writer is fixed; it could be offered as an opt-in normalization.
+- **`smart`** is off in the recommended settings, for the reasons above.
+
+## Upstream issues
+
+Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for issues and patches. Known limitations that are *not* listed: the alignment of simple tables, pipe tables padded past `columns`, and bare text in divs.
+
+1. **Table cells get raw line breaks with `--wrap=preserve`.** A cell whose text contains a soft line break is written with the newline inside the row. For simple tables (the default choice) the continuation becomes a new row; for pipe tables the row is invalid. With `--wrap=auto` it becomes a space, as it should here too. Reproduction: `haskell/experiments/softbreak-in-cell.native`, a two-column table with widths at their defaults and one cell `wrapped⏎text`:
+
+    ```
+    $ pandoc -f native -t markdown --wrap=preserve softbreak-in-cell.native
+      a   b
+      --- ---------
+      x   wrapped
+          text
+    $ pandoc -f native -t markdown-simple_tables-multiline_tables --wrap=preserve softbreak-in-cell.native
+    | a   | b       |
+    |-----|---------|
+    | x   | wrapped
+           text     |
+    ```
+
+    Code: `Writers/Markdown/Table.hs`. In practice this hits any grid table with a wrapped cell once its widths are reset.
+
+2. **Code blocks without attributes are always written as indented code**, even when `fenced_code_blocks` or `backtick_code_blocks` is enabled (`blockToMarkdown'`, `CodeBlock` case: fenced only if `attribs /= nullAttr`). Indented code can't hold leading or trailing blank lines, so those are lost:
+
+    ```
+    $ printf '```\ncode\n\n```\n' | pandoc -t native    # CodeBlock "code\n"
+    $ printf '```\ncode\n\n```\n' | pandoc -t markdown  # "    code"
+    ```
+
+    It also forces `<!-- -->` between a list and a following code block. Proposal: use a fence whenever one of those extensions is on, or at least whenever the code has leading or trailing blank lines.
+
+3. **Example lists are written as `(1)`**, not `(@)`: `orderedListMarkers` (`Writers/Shared.hs`) writes numbers for the `Example` style, so the list becomes a decimal list (`class="example"` is lost).
+
+    ```
+    $ printf '(@) a\n(@) b\n' | pandoc -t markdown     # (1) a / (2) b
+    ```
+
+4. **`#.` lists are written as `1.`**: the `DefaultStyle`/`DefaultDelim` list becomes `Decimal`/`Period` (`<ol>` becomes `<ol type="1">`). Same code path as 3.
+
+    ```
+    $ printf '#. a\n#. b\n' | pandoc -t markdown       # 1. a / 2. b
+    ```
+
+5. **`smart`'s non-breaking space after abbreviations is written out.** The writer's `unsmartify` undoes curly quotes and dashes, but not the non-breaking space the reader inserts after abbreviations.
+
+    ```
+    $ printf 'See p. 30.\n' | pandoc -t markdown | cat -A   # See p.M-BM- 30.
+    ```
+
+6. **A link URL containing an unbalanced `)` isn't escaped.**
+
+    ```
+    $ printf '[link](/hithere\\))\n' | pandoc -t markdown   # [link](/hithere))
+    ```
+
+    This reads back as a link to `/hithere` followed by a literal `)`.
+
+# Tables
+
+Tables are where pandoc as a formatter hurts most. pandoc's table AST stores relative column widths. The reader derives them from the source, using the dash counts and scaling when a line is longer than `columns`; otherwise it stores none. The writer then picks a table syntax (simple, multiline, grid, pipe) based on the widths and on which extensions are enabled, and the new source reads back with different widths or alignment. This design doc is an example: pandoc rewrites its pipe tables as simple tables. That makes the alignment explicitly left and changes the widths, so the `html` check fails, and the widths shift again on every run, so `source` fails too.
+
+## Findings (plan step 1b)
+
+The experiment is `haskell/experiments/Tables.hs`. It runs 12 tables (each syntax, alignment, long lines, inline markup, block content in cells, and this doc's two tables) × every combination of disabled table extensions × `columns` 40/72/100/120/200, with checks `[source, html]`.
+
+- **Default `markdown` accepts 14 of 60 runs.** The main cause is a writer limitation: a simple table can't express *default* alignment when a header is shorter than its column. The writer pads the header, the reader then sees it flush left, and the column becomes `AlignLeft`. Every pipe table without explicit alignment hits this, since the writer prefers simple tables. A known pandoc limitation: the four syntaxes are interchangeable, and there is no way to fix the syntax for one table.
+- **Disabling extensions in `from` is the wrong knob.** `from` sets the reader too, so with pipe tables only, a simple or grid table in the source is read as a paragraph. The guard accepts that, because it is the same under that reader, but the user's own pandoc run (plain `markdown`) reads a table there.
+- **So the writer gets its own extensions:** `pandoc.to`, defaulting to `from`. It must be the same markdown flavour as `from`, and only its extensions may differ.
+- **Pipe tables only (`to: markdown-simple_tables-multiline_tables-grid_tables`), widths kept.** This was the best setting that keeps widths. It accepts 44 of 60 runs, and every pipe and simple table is written as a pipe table. The failures are grid and multiline tables (rejected, so left untouched), plus one known limitation: the writer can pad a pipe table past `columns`, and on re-reading the table gets widths it didn't have. This setting is superseded by [Recommended defaults for `markdown`], which resets widths.
+- Keeping grid tables (`to: markdown-simple_tables-multiline_tables`) accepts 46 of 60 runs, but pipe tables then fail at narrow widths, because the writer switches to grid tables.
+- **What each syntax can express** (pandoc 3.10.2 manual and reader): grid tables are the most capable. They have block content, row and column spans, alignment, a foot and headerless tables. Pipe tables have none of the first four and no multi-line cells. The exception is widths: grid and multiline tables *always* get widths on reading, computed from the dash lengths relative to `columns`. Only pipe tables (with no line longer than `columns`) and simple tables can have none.
+- **Resetting widths** means setting every column's width to default in the AST right after reading, on both the original and the formatted source. Then width can't cause a mismatch, and grid tables can express everything. With `to:` grid tables only (`markdown-simple_tables-multiline_tables-pipe_tables`), every run passes the `html` check at every `columns`. The html check then doesn't depend on `columns` at all: the reader only uses it to compute widths, which are reset, and checks render without wrapping. The rest (8 of 60) fail only `source`. When cell text doesn't fit in `columns`, the grid writer wraps it, `--wrap=preserve` keeps that wrap as a line break, and the next run lays the table out differently once more. In every case, including this doc at 72 and 120, the second run reaches a fixed point.
+- **Why it's still not free:**
+    - Resetting only happens inside panblack. The user's own pandoc run still reads widths: this doc's pipe table goes from 50/50 to 20/79, and a table with no widths gains some, since a grid table always has them. So this doesn't hold the pandoc-relative guarantee for widths. It would be an explicit opt-in meaning "same, except table column widths".
+    - A large `columns` is not a fix. It changes what is written, since `columns` is the markdown writer's line length (tables in this doc grow to 194 characters, and in general a cell never wraps). The failing check is `source`, which by definition reruns the formatter with the same options, so it can't use a different `columns` from the output.
+- **When pipe tables are written with widths reset**, a multiline table's multi-line cells go into a pipe table, and with `--wrap=preserve` the line breaks are written inside the pipe row. That breaks the table, so it reads back as a paragraph. This is a writer bug: pipe cells can't contain newlines. It doesn't happen when pipe tables are disabled in `to`.
+- `columns` also sets the reader's columns, as with the pandoc CLI. The reader uses them to decide whether a table gets relative widths.
+
+Open: whether to offer width-resetting as an opt-in (see above), and which `to:` default `panblack init` writes. Then rerun on real corpora in step 2.
+
+## Stability of the candidate defaults
+
+Run with `haskell/experiments/Stability.hs` on 30 documents (about 70 tables):
+
+- the 12 synthetic tables
+- this doc
+- pandoc's own markdown test files (`tables`, `pipe-tables`, `testsuite`, `markdown-reader-more`, `markdown-citations`)
+- the 12 sections of pandoc's `MANUAL.txt` that contain a table
+
+For each document it iterates `f(i+1) = write(read(f(i)))` from the source `f0`, and records:
+
+- **html:** `html(f0) == html(f1)`, the output check;
+- **round 1:** `f1 == f2`, the `source` check;
+- **round 2:** `f2 == f3`;
+- **settles:** the round at which the output stops changing, if any.
+
+`from: markdown`, `to: markdown-simple_tables-multiline_tables`, over `columns` 72/80/88/100/120:
+
+| wrap | widths | html | round 1 | round 2 | never settles (>8 rounds) |
+|---|---|---|---|---|---|
+| `auto` | kept | 15–17 | 23–27 | 26–29 | 1–2 |
+| `auto` | reset | 21–22 | 29–30 | 29–30 | 0–1 |
+| `preserve` | kept | 15–17 | 23–27 | 26–29 | 1 |
+| `preserve` | reset | 20 | 27 | **30 at every width** | 0 |
+
+At 80 columns, `wrap: auto`: html 15, round 1 27, round 2 27, never 1 with widths kept; html 22, round 1 30, round 2 30, never 0 with widths reset.
+
+What the failures are:
+
+- **Table widths** account for every html failure that resetting widths fixes (7 of 15 documents at 80), and for most of the documents that take 3–5 rounds to settle.
+- **Wrap and escape oscillation** (`wrap: auto` only): a line break can put a number ending in `.` at the start of a line, where it would read as a list item. So the writer escapes it (`71\.`), which lengthens the line and moves the break, so the next round it isn't escaped. This is period-2 forever (this doc at 100 columns, pandoc's reader test at 72). It is the escape problem that makes pandoc round trips hard to stabilise; the html doesn't change.
+- **Multi-line cells written as a pipe table with `wrap: preserve`**: the line breaks go inside the pipe row and break the table (see [Tables]). With `wrap: auto` they become spaces, so this doesn't happen.
+- **Other writer losses, not about tables** (the guard rejects these files, which is the design working):
+    - trailing blank lines of a code block inside a grid cell are dropped;
+    - example lists (`(@)`, `(@foo)`) are written as `(1)`, so they become ordinary lists;
+    - `smart` inserts a non-breaking space in `[p. 30]` inside a citation;
+    - one list numbering style in pandoc's `testsuite` (`<ol>` becomes `<ol type="1">`).
+
+Two rounds are not always enough with widths kept: some documents take 3 or 5. With widths reset and `wrap: preserve`, every document is fixed after round 2 at every width. With widths reset and `wrap: auto`, almost every document is fixed after round 1; only the escape oscillation remains.
 
 # Config
 
@@ -96,9 +348,9 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
 - paths: [pages, README.md]
   exts: [md]
   excludes: []
-  check: [html]            # target-equal fallbacks; AST-equal is always tried first
+  check: [source, html]    # all must pass; default [source] (see Terminology)
   pandoc:                  # inline pandoc defaults file (alternatively: defaults: path/to/file.yaml)
-    from: markdown-raw_attribute-latex_macros+east_asian_line_breaks+autolink_bare_uris
+    from: markdown-raw_attribute-latex_macros-simple_tables-multiline_tables+east_asian_line_breaks+autolink_bare_uris
     wrap: preserve
     columns: 120
     reference-location: block
@@ -106,7 +358,7 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
 - paths: [src]
   exts: [ipynb]
   excludes: ['.ipynb_checkpoints/']
-  check: [html]
+  check: [source, html]
   pandoc:
     wrap: preserve
     columns: 120
@@ -119,7 +371,7 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
     - [jupytext, --sync, --pipe, 'ruff check --select I --fix-only -', --pipe, 'ruff format -', '{path}']
 ```
 
-- `pandoc:` is parsed with pandoc's own defaults-file machinery, so any per-document option pandoc understands works here. Options that make no sense for a formatter (`to`, `output-file`, filters, `standalone`) are rejected.
+- `pandoc:` is parsed with pandoc's own defaults-file machinery, so any per-document option pandoc understands works here. `to` defaults to `from` and may differ only in extensions (see [Tables]). Options that make no sense for a formatter (`output-file`, filters, `standalone`) are rejected.
 - For ipynb profiles, `pandoc.from` is not used; the cell format comes from `ipynb.cell-format`.
 - `excludes`: provisionally gitignore-style globs, and `.gitignore` is respected (see [Open questions]).
 
@@ -190,7 +442,7 @@ panblack init               # print a starter .panblack.yaml
 panblack --version          # includes the bundled pandoc version
 ```
 
-Exit codes: 0 means OK. 1 means `--check` found changes. 2 means a guard failure (preservation or stability). 3 means an error in usage, config or IO. A guard failure is never downgraded to a warning (0.x logged it and exited 0).
+Exit codes: 0 means OK. 1 means `--check` found changes. 2 means a failed check (see [Terminology]). 3 means an error in usage, config or IO. A guard failure is never downgraded to a warning (0.x logged it and exited 0).
 
 # Versioning
 
@@ -216,7 +468,7 @@ panblack 0.x was never published to PyPI or conda-forge; users install it from t
 | 0.x (`pyproject.toml`) | 1.0 (`.panblack.yaml`) |
 |---|---|
 | `input_format` | `pandoc.from`; for ipynb profiles, `ipynb.cell-format` (with the `ipynb` prefix removed) |
-| `require_idempotence_format` | `check`. An `input_format` entry is dropped because stability is always checked. |
+| `require_idempotence_format` | `check`, same meaning. The `"input_format"` entry becomes `source`. |
 | `paths`, `exts` | unchanged |
 | `excludes` (regex) | `excludes` (see [Open questions]) |
 | `pandoc_args` | `pandoc:` keys, e.g. `--wrap=preserve` → `wrap: preserve`. `--sandbox` is dropped (always on). Unknown args cause an error with a pointer to the docs. |
@@ -231,7 +483,8 @@ Expect a one-time reformat commit per project, because the pandoc version change
 # Plan
 
 0. Get 0.x running locally against a recent pandoc, as a reference *oracle* for parity tests. No release. **Done** (see [Running the 0.x oracle]).
-1. Spike: `panblack-core` markdown-only on the GHC wasm backend, plus size and latency numbers. This decides the wasm tiers.
+1. Spike: `panblack-core` markdown-only on the GHC wasm backend, plus size and latency numbers. This decides the wasm tiers. **Done** (see [`panblack-wasm` (editor build)]). The core and a stdin→stdout prototype driver are in `haskell/` (native output byte-identical to the pandoc CLI with the 0.x template).
+    - 1b. Tables (see [Tables]), in parallel with the spike. **Done** for the synthetic set; real corpora in step 2.
 2. Core and CLI for markdown: guard, config, `--check`/`--diff`. Golden tests against the 0.x oracle on real corpora, with both using the same pandoc version.
 3. ipynb: pair detection and cell-level formatting, plus hooks.
 4. Settle the open questions, then freeze the config schema.
@@ -285,15 +538,24 @@ Things to know:
 - **Dependency bounds.** Hackage expects bounded dependencies (`cabal check` warns otherwise). Pinning pandoc to one exact version (`pandoc ==3.x.y`) is unusual on Hackage, but it is deliberate here and should be explained in the package description.
 - The first upload makes you the package's maintainer; other people can only upload if you add them.
 
+# Licence
+
+pandoc is GPL-2.0-or-later, and every panblack binary bundles it, so distributed binaries are covered by the GPL whatever licence panblack's own source uses. 0.x is BSD-3. BSD-3 source is GPL-compatible, so keeping it is possible, but GPL-2.0-or-later (as pandoc-crossref does) avoids the split and lets the repository include pandoc-derived material. Changing it is the author's decision; 0.x has a single author.
+
+Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.10.2`), not copied into the repository. That keeps them in step with the pinned version whatever the licence.
+
 # Open questions
 
 Nothing here blocks prototyping. Each question has a provisional choice that the prototype builds on; the prototype's evidence settles it before the config schema is frozen (plan step 4). Only the config-shape questions affect migration.
 
 | Question | Provisional choice | Settled by |
 |---|---|---|
-| AST normalization before comparing | none; measure fast-path hit rate | golden corpus (step 2) |
-| wasm tiers | `md` and `md+html` | spike (step 1) |
+| AST normalization before comparing (speed only) | none; measure fast-path hit rate | golden corpus (step 2) |
+| Default table settings | `from`/`to: markdown-simple_tables-multiline_tables`, `wrap: preserve`, widths reset (see [Recommended defaults for `markdown`]) | step 2 corpora |
+| Normalizations: option names, defaults, how to turn them off | all on in the happy case; see [Normalizations] | before freeze |
+| wasm tiers | settled: one tier, `md+html` | spike (step 1), done |
 | `excludes` regex or globs | gitignore-style globs, `.gitignore` respected | usage on real repos |
 | ipynb: cell-level or whole-notebook round trip | cell-level | step 3 |
 | Hooks or pre-commit only | hooks | usage |
+| Licence: GPL-2.0-or-later (like pandoc and pandoc-crossref) or keep BSD-3 | GPL-2.0-or-later; see [Licence] | before the repo is public |
 | Config filename and discovery | `.panblack.yaml`, walk up to the repo root | before freeze |

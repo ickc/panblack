@@ -1,0 +1,69 @@
+cabal-version:      3.0
+name:               panblack
+version:            0.99.0
+synopsis:           Formatter for pandoc sources, guarded by pandoc itself
+description:
+  panblack formats documents with pandoc and only accepts the result if
+  pandoc reads the formatted source the same way as the original.
+  .
+  pandoc is pinned to one exact version on purpose: formatter output
+  depends on the pandoc version, so each panblack release bundles one.
+homepage:           https://github.com/ickc/panblack
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Kolen Cheung
+maintainer:         christian.kolen@gmail.com
+category:           Text
+build-type:         Simple
+tested-with:        GHC ==9.12.2
+
+common warnings
+  ghc-options:      -Wall -Wcompat -Wincomplete-uni-patterns -Wincomplete-record-updates
+
+common deps
+  default-language: GHC2021
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+  build-depends:
+    , base          >=4.18 && <5
+    , pandoc        ==3.10.2
+    , pandoc-types  >=1.23.1.2 && <1.24
+    , doctemplates  >=0.11 && <0.12
+    , mtl           >=2.2 && <2.4
+    , text          >=2.0 && <2.2
+
+library
+  import:           warnings, deps
+  hs-source-dirs:   src
+  exposed-modules:
+    Panblack.Guard
+    Panblack.Markdown
+    Panblack.Target.Html
+    Panblack.Target.Registry
+
+executable panblack
+  import:           warnings, deps
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    panblack
+  ghc-options:      -threaded -rtsopts
+
+test-suite spec
+  import:           warnings, deps
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Spec.hs
+  build-depends:    panblack
+
+-- Editor-build spike (plan step 1). Build with cabal.project.wasm.
+executable panblack-wasm-md
+  import:           warnings, deps
+  hs-source-dirs:   wasm
+  main-is:          Main.hs
+  build-depends:    panblack
+
+executable panblack-wasm-html
+  import:           warnings, deps
+  hs-source-dirs:   wasm
+  main-is:          Main.hs
+  build-depends:    panblack
+  cpp-options:      -DWITH_HTML
