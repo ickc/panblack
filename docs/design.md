@@ -200,15 +200,15 @@ With the [Normalizations] below added and `smart` off, the same settings give **
 
 ## Normalizations
 
-A normalization is applied to the AST right after every read, on the original and on the formatted source alike. So the checks compare normalized documents, and the formatted source is written from a normalized AST. Each one gives up pandoc-relative equality for something that is, in practice, an accident of the source or of the writer: the html of your own pandoc run can change in the stated way. Each is a separate option. The happy case assumes all of them are on; names, defaults and how to turn them off are open (see [Open questions]). Prototype: `haskell/experiments/normalize.lua`.
+A normalization is applied to the AST right after every read, on the original and on the formatted source alike. So the checks compare normalized documents, and the formatted source is written from a normalized AST. Each one gives up pandoc-relative equality for something that is, in practice, an accident of the source or of the writer: the html of your own pandoc run can change in the stated way. Each is a separate option, listed by name in a profile's `normalize:` key. None is on by default, so the default is pandoc-relative equality with no exceptions. The happy case assumes all of them are on, and `panblack init` writes them all (see [Config]). Implementation: `Panblack.Normalize`. Its output matches the Lua prototype (`haskell/experiments/normalize.lua`) byte for byte on the 24 documents of the corpus below.
 
-| Normalization | What changes in your own html | Why |
+| Normalization (`normalize:` name) | What changes in your own html | Why |
 |---|---|---|
-| **Reset table widths** | column widths (`<col style="width: …">`) | Widths come from dash lengths and `columns`, and the writer can't reproduce them. See [Tables]. |
-| **Line breaks in table cells become spaces** | nothing visible (a newline becomes a space in the html source) | With widths reset, the writer may choose a pipe table for a grid table with wrapped cells, and with `wrap: preserve` it writes the line breaks into the pipe row, which gives an invalid table ([Upstream issues] 1). The table is laid out again anyway. Code blocks, code spans and math aren't affected, since they don't contain line-break elements. |
-| **Strip leading and trailing blank lines in code blocks** | those blank lines inside `<pre>` | A code block without attributes is always written as indented code, which can't hold them ([Upstream issues] 2). They are usually accidental, e.g. the padding rows of a grid cell falling inside a fence. |
-| **Bare text directly inside a div becomes a paragraph** | a `<p>` inside such divs | `<div>text</div>` on one line reads as bare text, and no div syntax the writer has can write that back: both fenced divs and raw `<div>` put the content on its own lines. This is a limitation of the syntax, not a bug. |
-| **Drop empty `<!-- -->` comments** | the empty comment disappears | The writer inserts `<!-- -->` to separate a list from a following indented code block or list. That would be a new block in the html. The writer puts it back wherever it is needed, so the formatted source still reads correctly. |
+| **Reset table widths** (`table-widths`) | column widths (`<col style="width: …">`) | Widths come from dash lengths and `columns`, and the writer can't reproduce them. See [Tables]. |
+| **Line breaks in table cells become spaces** (`table-cell-breaks`) | nothing visible (a newline becomes a space in the html source) | With widths reset, the writer may choose a pipe table for a grid table with wrapped cells, and with `wrap: preserve` it writes the line breaks into the pipe row, which gives an invalid table ([Upstream issues] 1). The table is laid out again anyway. Code blocks, code spans and math aren't affected, since they don't contain line-break elements. |
+| **Strip leading and trailing blank lines in code blocks** (`code-block-blank-lines`) | those blank lines inside `<pre>` | A code block without attributes is always written as indented code, which can't hold them ([Upstream issues] 2). They are usually accidental, e.g. the padding rows of a grid cell falling inside a fence. |
+| **Bare text directly inside a div becomes a paragraph** (`div-bare-text`) | a `<p>` inside such divs | `<div>text</div>` on one line reads as bare text, and no div syntax the writer has can write that back: both fenced divs and raw `<div>` put the content on its own lines. This is a limitation of the syntax, not a bug. |
+| **Drop empty `<!-- -->` comments** (`empty-comments`) | the empty comment disappears | The writer inserts `<!-- -->` to separate a list from a following indented code block or list. That would be a new block in the html. The writer puts it back wherever it is needed, so the formatted source still reads correctly. |
 
 Potential problems considered for the table-cell normalization: a cell with a paragraph followed by a list and a code block, one with a hard line break (`\`), and one with inline math and a code span that wrap across lines. These are all in `grid_blocks_wrapped.md`, which passes both checks. Hard breaks are a different element and are kept. The `east_asian_line_breaks` extension removes its line breaks while reading, so it doesn't interact.
 
@@ -349,6 +349,7 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
   exts: [md]
   excludes: []
   check: [source, html]    # all must pass; default [source] (see Terminology)
+  normalize: [table-widths, table-cell-breaks]   # default none (see Normalizations)
   pandoc:                  # inline pandoc defaults file (alternatively: defaults: path/to/file.yaml)
     from: markdown-raw_attribute-latex_macros-simple_tables-multiline_tables+east_asian_line_breaks+autolink_bare_uris
     wrap: preserve
@@ -371,9 +372,15 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
     - [jupytext, --sync, --pipe, 'ruff check --select I --fix-only -', --pipe, 'ruff format -', '{path}']
 ```
 
-- `pandoc:` is parsed with pandoc's own defaults-file machinery, so any per-document option pandoc understands works here. `to` defaults to `from` and may differ only in extensions (see [Tables]). Options that make no sense for a formatter (`output-file`, filters, `standalone`) are rejected.
+- `pandoc:` is parsed by pandoc's own defaults-file parser, after checking that it only uses the options in [Formatter options]: `from`/`reader`, `to`/`writer`, `columns`, `tab-stop`, `indented-code-classes`, `abbreviations`, `wrap`, `markdown-headings`, `reference-links`, `reference-location`, `ascii` and `eol`. Anything else is an error (`output-file`, `filters`, `standalone`, ...). So is an unknown key anywhere in the config. `to` defaults to `from` and may differ only in extensions (see [Tables]).
+- `defaults:` names a pandoc defaults file, relative to the config file, with the same restriction. The inline `pandoc:` keys override it. It can't include further defaults files. `abbreviations` is also relative to the config file (pandoc's CLI resolves it relative to the working directory).
+- `eol` (`lf`, `crlf`, `native`; pandoc's default is `native`) sets the line endings written. As with the pandoc CLI, input is read with carriage returns and a byte-order mark removed and tabs expanded, so a CRLF file is rewritten with LF under the default.
+- Defaults are 0.x's: `exts: [md, markdown]`, `excludes: [.git/, .pytest_cache/]`, `check: [source]`, no normalizations, and pandoc's own defaults for `pandoc:`.
+- A file matched by two profiles is an error (0.x formatted it twice, concurrently).
+- Without a config file, `panblack PATH...` uses one profile with those defaults on the given paths.
 - For ipynb profiles, `pandoc.from` is not used; the cell format comes from `ipynb.cell-format`.
-- `excludes`: provisionally gitignore-style globs, and `.gitignore` is respected (see [Open questions]).
+- `excludes`: gitignore-style globs, matched while walking a listed directory. A trailing `/` matches directories only, a pattern with another `/` is anchored at the config directory, and any other pattern matches a name at any depth. A file listed in `paths` is always included, as in 0.x. `.gitignore` is not read yet (see [Open questions]).
+- `panblack init` prints the recommended defaults for markdown, with every normalization on.
 
 # ipynb
 
@@ -437,12 +444,19 @@ panblack [PATH...]          # format in place using .panblack.yaml profiles
   --check                   # exit 1 if any file would change
   --diff                    # print a unified diff, write nothing
   --config FILE
-  -j N
+  -j N                      # default: number of CPUs
+  -v                        # list unchanged files; show the check renders that differ
+panblack - [--stdin-filename PATH]   # stdin to stdout
 panblack init               # print a starter .panblack.yaml
 panblack --version          # includes the bundled pandoc version
 ```
 
-Exit codes: 0 means OK. 1 means `--check` found changes. 2 means a failed check (see [Terminology]). 3 means an error in usage, config or IO. A guard failure is never downgraded to a warning (0.x logged it and exited 0).
+Exit codes: 0 means OK. 1 means `--check` found changes. 2 means a failed check (see [Terminology]). 3 means an error in usage, config or IO. With several files the highest code wins. A guard failure is never downgraded to a warning (0.x logged it and exited 0).
+
+- The config is `.panblack.yaml`, searched from the working directory upwards, stopping at the repository root (the directory containing `.git`).
+- `PATH...` selects among the files the profiles cover: those files at or below the given paths. A named file that no profile covers is skipped with a note, so a pre-commit hook can pass every changed file.
+- Reports go to stderr, one line per file (`reformatted`, `would reformat`, `rejected`, `error`) and a summary; diffs go to stdout.
+- With `-`, the profile is the only one, or the one covering `--stdin-filename`. The formatted source is written to stdout. If it is rejected, the input is written back unchanged (exit 2), so a pipe never loses the document.
 
 # Versioning
 
@@ -486,6 +500,8 @@ Expect a one-time reformat commit per project, because the pandoc version change
 1. Spike: `panblack-core` markdown-only on the GHC wasm backend, plus size and latency numbers. This decides the wasm tiers. **Done** (see [`panblack-wasm` (editor build)]). The core and a stdin→stdout prototype driver are in `haskell/` (native output byte-identical to the pandoc CLI with the 0.x template).
     - 1b. Tables (see [Tables]), in parallel with the spike. **Done** for the synthetic set; real corpora in step 2.
 2. Core and CLI for markdown: guard, config, `--check`/`--diff`. Golden tests against the 0.x oracle on real corpora, with both using the same pandoc version.
+    - CLI, config and normalizations: **done**. With no normalizations, the output is byte-identical to the pandoc CLI (what 0.x runs) for every formatter option on four documents (pandoc's `testsuite.txt`, `markdown-reader-more.txt` and `MANUAL.txt`, and this doc), for `markdown`, `gfm` and `commonmark_x`. With all of them on, it is byte-identical to pandoc with the Lua prototype on the 24-document corpus.
+    - Golden tests on real corpora: next.
 3. ipynb: pair detection and cell-level formatting, plus hooks.
 4. Settle the open questions, then freeze the config schema.
 5. Python `v0.2.0` tag: `export-config` and the deprecation notice.
@@ -552,9 +568,9 @@ Nothing here blocks prototyping. Each question has a provisional choice that the
 |---|---|---|
 | AST normalization before comparing (speed only) | none; measure fast-path hit rate | golden corpus (step 2) |
 | Default table settings | `from`/`to: markdown-simple_tables-multiline_tables`, `wrap: preserve`, widths reset (see [Recommended defaults for `markdown`]) | step 2 corpora |
-| Normalizations: option names, defaults, how to turn them off | all on in the happy case; see [Normalizations] | before freeze |
+| Normalizations: option names, defaults, how to turn them off | a `normalize:` list, empty by default; `init` turns all on; see [Normalizations] | before freeze |
 | wasm tiers | settled: one tier, `md+html` | spike (step 1), done |
-| `excludes` regex or globs | gitignore-style globs, `.gitignore` respected | usage on real repos |
+| `excludes` regex or globs | gitignore-style globs (done); whether to read `.gitignore` is still open | usage on real repos |
 | ipynb: cell-level or whole-notebook round trip | cell-level | step 3 |
 | Hooks or pre-commit only | hooks | usage |
 | Licence: GPL-2.0-or-later (like pandoc and pandoc-crossref) or keep BSD-3 | GPL-2.0-or-later; see [Licence] | before the repo is public |

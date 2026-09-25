@@ -22,7 +22,7 @@ common warnings
 
 common deps
   default-language: GHC2021
-  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+  default-extensions: DerivingStrategies LambdaCase MultiWayIf OverloadedStrings
   build-depends:
     , base          >=4.18 && <5
     , pandoc        ==3.10.2
@@ -34,9 +34,22 @@ common deps
 library
   import:           warnings, deps
   hs-source-dirs:   src
+  build-depends:
+    , aeson         >=2.0 && <2.4
+    , bytestring    >=0.11 && <0.13
+    , containers    >=0.6 && <0.8
+    , Diff          >=1.0 && <2.1
+    , directory     >=1.3 && <1.4
+    , filepath      >=1.4 && <1.6
+    , Glob          >=0.10 && <0.11
+    , yaml          >=0.11 && <0.12
   exposed-modules:
+    Panblack.Config
+    Panblack.Diff
+    Panblack.Discover
     Panblack.Guard
     Panblack.Markdown
+    Panblack.Normalize
     Panblack.Target.Html
     Panblack.Target.Registry
 
@@ -44,7 +57,14 @@ executable panblack
   import:           warnings, deps
   hs-source-dirs:   app
   main-is:          Main.hs
-  build-depends:    panblack
+  other-modules:    Paths_panblack
+  autogen-modules:  Paths_panblack
+  build-depends:
+    , panblack
+    , bytestring
+    , containers
+    , directory
+    , filepath
   ghc-options:      -threaded -rtsopts
 
 test-suite spec
@@ -52,7 +72,9 @@ test-suite spec
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Spec.hs
-  build-depends:    panblack
+  build-depends:
+    , panblack
+    , aeson
 
 -- Editor-build spike (plan step 1). Build with cabal.project.wasm.
 executable panblack-wasm-md

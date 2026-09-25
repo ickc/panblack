@@ -23,6 +23,7 @@ import Text.Pandoc.Format (FlavoredFormat (..), applyExtensionsDiff, getExtensio
 import Text.Pandoc.Options (ReaderOptions (..), WriterOptions (..))
 import Text.Pandoc.Readers.CommonMark (readCommonMark)
 import Text.Pandoc.Readers.Markdown (readMarkdown)
+import Text.Pandoc.Shared (tabFilter)
 import Text.Pandoc.Writers.Markdown (writeCommonMark, writeMarkdown)
 
 type Reader = ReaderOptions -> Text -> PandocPure Pandoc
@@ -55,8 +56,9 @@ compileTemplateText t =
 -- tables while still reading every table syntax). The specs' extensions
 -- replace those in the given options, and the reader's columns follow the
 -- writer's, as with the pandoc CLI's @--columns@ (the reader uses them to
--- decide relative table column widths). The profile has no checks; add them
--- with 'profileChecks'.
+-- decide relative table column widths). Tabs are expanded before reading,
+-- as the pandoc CLI does unless given @--preserve-tabs@. The profile has no
+-- checks; add them with 'profileChecks'.
 markdownProfile :: Text -> Text -> ReaderOptions -> WriterOptions -> Either PandocError Profile
 markdownProfile from to ropts wopts = runPure $ do
   fromFlavored <- parseFlavoredFormat from
@@ -77,7 +79,7 @@ markdownProfile from to ropts wopts = runPure $ do
           }
   pure
     Profile
-      { profileRead = reader ropts'
+      { profileRead = reader ropts' . tabFilter (readerTabStop ropts')
       , profileWrite = writer wopts'
       , profileChecks = []
       }
