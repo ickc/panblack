@@ -606,6 +606,7 @@ The name `panblack` is currently free on Hackage.
 2. A new account can't upload yet. Ask to join the *uploaders* group, either by getting two existing uploaders to endorse you (the confirmation email explains how) or by emailing <hackage-trustees@haskell.org> with your Hackage username and a link to the package's public repository (<https://github.com/ickc/panblack>). Do this after the repository is public.
 3. Create an API token under your account settings on Hackage, and use it for uploads instead of your password.
 4. Toolchain: install `ghcup`, then GHC and cabal through it. The feedstock's pinned GHC is what matters for releases; locally, match its version.
+5. TODO: a CI workflow that builds the package and runs `cabal test` on every push and pull request (the Python test workflow went with 0.x). The first run compiles pandoc, so cache the cabal store.
 
 ## Each release
 
