@@ -433,7 +433,7 @@ panblack reads the pairing from each notebook it formats (`jupytext.formats` in 
 
 ## Cell-level formatting
 
-pandoc's ipynb round trip normalizes more than a formatter should. For example, running 0.x with pandoc 3.10.2 on `tests/ipynb/example_1.ipynb` changed `language_info.codemirror_mode.version` from the number `3` to the string `"3"`, and for a notebook without cell ids pandoc makes up new random ones on every run, so 0.x's check never passes on it. Metadata, nbformat minor version, cell ids and attachments are all at risk in the same way. 1.0 therefore formats cell by cell (`Panblack.Notebook`):
+pandoc's ipynb round trip normalizes more than a formatter should. For example, running 0.x with pandoc 3.10.2 on its `tests/ipynb/example_1.ipynb` changed `language_info.codemirror_mode.version` from the number `3` to the string `"3"`, and for a notebook without cell ids pandoc makes up new random ones on every run, so 0.x's check never passes on it. Metadata, nbformat minor version, cell ids and attachments are all at risk in the same way. 1.0 therefore formats cell by cell (`Panblack.Notebook`):
 
 - The JSON is parsed with aeson (already a pandoc dependency), and only the markdown cells' `source` goes through the markdown pipeline. The new sources are spliced into the original bytes, so every other byte is kept: metadata, outputs, cell ids, number formatting, indentation. A source keeps its shape: a string stays a string; a list of lines stays a list, laid out like the old one. It is written as Jupyter writes JSON (Python's `json.dumps`), with non-ASCII characters escaped only if the file is all ASCII. A final newline is kept or left out as in the original cell, since Jupyter cells usually have none. Carriage returns are removed before reading, as for files.
 - **Each cell is a document.** JupyterLab, nbconvert and pandoc's own ipynb reader all read each cell on its own, so the guard checks each cell on its own. A cell whose checks fail is kept as it was, and the other cells are still formatted: the file is *partly reformatted* (exit code 2, so `--check` and pre-commit still flag it). This is the one exception to "a file is written only if every listed check passes" (see [Terminology]): for a notebook, the unit is the cell.
@@ -540,7 +540,7 @@ Why pinning matters: 0.x uses whatever pandoc is on PATH. Running it with pandoc
 
 # Migration from 0.x
 
-panblack 0.x was never published to PyPI or conda-forge; users install it from the git repository. So the "final Python release" is a git tag, `v0.2.0`, installable with `uv tool install git+https://github.com/ickc/panblack@v0.2.0`. It adds `panblack export-config`, which reads the `[["tool.panblack"]]` array from `pyproject.toml` (note: that is a literal quoted key, not nested `tool.panblack`) and writes `.panblack.yaml`. It also prints a deprecation notice pointing to 1.0. This way the Haskell binary never needs a TOML parser.
+panblack 0.x was never published to PyPI or conda-forge; users install it from the git repository. So the "final Python release" is a git tag, `v0.2.0`, on the `0.x` branch (`main` before 1.0, plus this release), installable with `uv tool install git+https://github.com/ickc/panblack@v0.2.0`. It adds `panblack export-config`, which reads the `[["tool.panblack"]]` array from `pyproject.toml` (note: that is a literal quoted key, not nested `tool.panblack`) and writes `.panblack.yaml`. It also prints a deprecation notice pointing to 1.0. This way the Haskell binary never needs a TOML parser.
 
 | 0.x (`pyproject.toml`) | 1.0 (`.panblack.yaml`) |
 |---|---|
@@ -570,17 +570,23 @@ Expect a one-time reformat commit per project, because the pandoc version change
 3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [ipynb] and [External hooks]). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that formatting the text side of a pair needs `jupytext --update` rather than `--sync`, and no jupytext YAML header (see [Alternative: format the text side]).
 4. Settle the open questions, then freeze the config schema.
     - A cache, as black has: **done** (see [Cache]). Runs are already fast (0.06 s for one notebook, 0.5 s for 137, of which about 0.04 s is start-up), so a daemon wouldn't buy much; the cost worth saving is re-running hooks such as jupytext and ruff, and large documents, on files that haven't changed. Watching files is left to tools such as `watchexec`.
-5. Python `v0.2.0` tag: `export-config` and the deprecation notice. **Done** (`src/panblack/export.py`, tagging pending). On the author's wiki config (three profiles, one ipynb with a spelled-out extension list), the exported config loads in 1.0, formats, and settles; the cell format comes out as `markdown+autolink_bare_uris+east_asian_line_breaks-latex_macros-raw_attribute-table_attributes`, the flavour the list was written to mimic, plus `table_attributes`, which pandoc added later.
+5. Python `v0.2.0` tag: `export-config` and the deprecation notice. **Done** on the `0.x` branch (`src/panblack/export.py`, tagging pending); the Python code is removed from this branch. On the author's wiki config (three profiles, one ipynb with a spelled-out extension list), the exported config loads in 1.0, formats, and settles; the cell format comes out as `markdown+autolink_bare_uris+east_asian_line_breaks-latex_macros-raw_attribute-table_attributes`, the flavour the list was written to mimic, plus `table_attributes`, which pandoc added later.
 6. panblack 1.0: Hackage (see [Publishing]), feedstock packaging, binaries, pre-commit hook. Migrate the dependent projects.
 7. The wasm build and the editor integration.
 
 ## Running the 0.x oracle
 
-Works with Python 3.12 and pandoc 3.10.2 with no code changes:
+0.x lives on the `0.x` branch. It works with Python 3.12 to 3.14 and pandoc 3.10.2 with no code changes. For the golden tests, install it on its own:
+
+```bash
+uv tool install git+https://github.com/ickc/panblack@v0.2.0   # or a worktree of the 0.x branch
+```
+
+To run its own tests, in a worktree of the `0.x` branch:
 
 ```bash
 uv venv .venv && uv pip install -e . pytest tomli jupytext
-.venv/bin/python -m pytest -q     # 8 passed
+.venv/bin/python -m pytest -q
 ```
 
 Caveat: the integration tests format the repository itself (`paths=[DIR]`) and run `jupytext --sync`. They rewrite tracked files and create `tests/ipynb/example_1.md`. Revert with `git checkout -- . && git clean -n` (review, then `-f`) after running them. The 1.0 tests must run on copies in a temporary directory.
