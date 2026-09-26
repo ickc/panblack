@@ -33,7 +33,7 @@ import Data.Text.Encoding qualified as TE
 import System.Directory (canonicalizePath, doesDirectoryExist, doesFileExist, listDirectory, pathIsSymbolicLink)
 import System.Exit (ExitCode (..))
 import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, (</>))
-import System.FilePath.Glob (Pattern, compDefault, match, tryCompileWith)
+import System.FilePath.Glob (MatchOptions (..), Pattern, compDefault, matchDefault, matchWith, tryCompileWith)
 import System.Process (CreateProcess (..), StdStream (..), proc, waitForProcess, withCreateProcess)
 
 data Exclude = Exclude
@@ -59,6 +59,8 @@ excluded exs isDir parts = any hit exs
     | exDirOnly ex && not isDir = False
     | exAnchored ex = match (exPattern ex) (joinPath parts)
     | otherwise = not (null parts) && match (exPattern ex) (last parts)
+  -- As in gitignore, a wildcard also matches a leading dot.
+  match = matchWith matchDefault {matchDotsImplicitly = True}
 
 hasExt :: [Text] -> FilePath -> Bool
 hasExt exts f = case takeExtension f of

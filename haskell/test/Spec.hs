@@ -117,6 +117,7 @@ main = do
   check "exclude: slash anchors at the root" $
     excluded (ex ["docs/*.md"]) False ["docs", "x.md"] && not (excluded (ex ["docs/*.md"]) False ["a", "docs", "x.md"])
   check "exclude: glob on names" $ excluded (ex ["*.draft.md"]) False ["a", "x.draft.md"]
+  check "exclude: a wildcard matches a leading dot" $ excluded (ex ["*checkpoints/"]) True ["a", ".ipynb_checkpoints"]
   check "relativeTo" $
     relativeTo "/a/b" "/a/c/d" == "../c/d" && relativeTo "/a" "/a/b" == "b" && relativeTo "/a" "/a" == "."
 
