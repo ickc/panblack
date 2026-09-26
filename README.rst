@@ -4,27 +4,11 @@
 panblack—black-like formatter for pandoc users.
 ===============================================
 
-:Date:   December 7, 2021
+:Date: September 26, 2026
 
 .. contents::
    :depth: 3
 ..
-
-+-------------+----------------------------------------------------------------------------------+
-| docs        | |Documentation Status| |image2|                                                  |
-+=============+==================================================================================+
-| tests       | |GitHub Actions| |Coverage Status|                                               |
-|             |                                                                                  |
-|             | |Codacy Code Quality Status| |Scrutinizer Status| |CodeClimate Quality Status|   |
-+-------------+----------------------------------------------------------------------------------+
-| package     | |Supported versions| |Supported implementations| |PyPI Wheel|                    |
-|             |                                                                                  |
-|             | |PyPI Package latest release| |GitHub Releases| |Development Status| |Downloads| |
-|             |                                                                                  |
-|             | |Commits since latest release| |License|                                         |
-+-------------+----------------------------------------------------------------------------------+
-| conda-forge | |Conda Recipe| |Conda Downloads| |Conda Version| |Conda Platforms|               |
-+-------------+----------------------------------------------------------------------------------+
 
 Deprecated: migrating to 1.0
 ============================
@@ -94,6 +78,7 @@ The following TOML is some examples:
    input_format = "ipynb-abbreviations+all_symbols_escapable-angle_brackets_escapable-ascii_identifiers+auto_identifiers+autolink_bare_uris+backtick_code_blocks+blank_before_blockquote+blank_before_header+bracketed_spans+citations-compact_definition_lists+definition_lists+east_asian_line_breaks-emoji+escaped_line_breaks+example_lists+fancy_lists+fenced_code_attributes+fenced_code_blocks+fenced_divs+footnotes-four_space_rule-gfm_auto_identifiers+grid_tables-gutenberg-hard_line_breaks+header_attributes-ignore_line_breaks+implicit_figures+implicit_header_references+inline_code_attributes+inline_notes+intraword_underscores-latex_macros+line_blocks+link_attributes-lists_without_preceding_blankline-literate_haskell-markdown_attribute+markdown_in_html_blocks-mmd_header_identifiers-mmd_link_attributes-mmd_title_block+multiline_tables+native_divs+native_spans-old_dashes+pandoc_title_block+pipe_tables-raw_attribute+raw_html+raw_tex-rebase_relative_paths-short_subsuperscripts+shortcut_reference_links+simple_tables+smart+space_in_atx_header-spaced_reference_links+startnum+strikeout+subscript+superscript+task_lists+table_captions+tex_math_dollars-tex_math_double_backslash-tex_math_single_backslash+yaml_metadata_block"
    require_idempotence_format = ["html"]
    pandoc_args = ["--sandbox", "--wrap=preserve", "--columns=120", "--reference-location=block", "--ipynb-output=all"]
+   jupytext_args = ["--pipe", "black", "--pipe", 'isort - --treat-comment-as-code "# %%" --float-to-top']
 
    [["tool.panblack"]]
    paths = ["posts"]
@@ -116,7 +101,7 @@ Other formats
 
 In principle the design here supports formats other than markdown, ipynb. But these are the 2 that I used and tested.
 
-For other formats, to achieve idempotence, you probably need to have a custom template. See ```src/panblack/templates/template.md`` <src/panblack/templates/template.md>`__ for an example of a markdown template.
+For other formats, to achieve idempotence, you probably need to have a custom template. See `src/panblack/templates/template.md <src/panblack/templates/template.md>`__ for an example of a markdown template.
 
 Also, note that it only makes sense for the input formats to be your source file that you are using pandoc to convert to some other formats. This is because in general pandoc is lossy conversion. For example, we can format RST here. But if your workflow uses other processor to consume RST, it makes more sense to use a parser that is as close as to the processor you’re using. (If however you author in RST and indeed is using pandoc to convert them to other formats, panblack is for you.)
 
@@ -127,44 +112,3 @@ This is tested on GitHub Actions with Linux instances. It is written in platform
 
 .. [1]
    Calling pandoc is outsourced to panflute which supports Linux, macOS, Windows.
-
-.. |Documentation Status| image:: https://readthedocs.org/projects/panblack/badge/?version=latest
-   :target: https://panblack.readthedocs.io/en/latest/?badge=latest&style=plastic
-.. |image1| image:: https://github.com/ickc/panblack/workflows/GitHub%20Pages/badge.svg
-   :target: https://ickc.github.io/panblack
-.. |GitHub Actions| image:: https://github.com/ickc/panblack/workflows/Python%20package/badge.svg
-.. |Coverage Status| image:: https://codecov.io/gh/ickc/panblack/branch/master/graphs/badge.svg?branch=master
-   :target: https://codecov.io/github/ickc/panblack
-.. |Codacy Code Quality Status| image:: https://img.shields.io/codacy/grade/078ebc537c5747f68c1d4ad3d3594bbf.svg
-   :target: https://www.codacy.com/app/ickc/panblack
-.. |Scrutinizer Status| image:: https://img.shields.io/scrutinizer/quality/g/ickc/panblack/master.svg
-   :target: https://scrutinizer-ci.com/g/ickc/panblack/
-.. |CodeClimate Quality Status| image:: https://codeclimate.com/github/ickc/panblack/badges/gpa.svg
-   :target: https://codeclimate.com/github/ickc/panblack
-.. |Supported versions| image:: https://img.shields.io/pypi/pyversions/panblack.svg
-   :target: https://pypi.org/project/panblack
-.. |Supported implementations| image:: https://img.shields.io/pypi/implementation/panblack.svg
-   :target: https://pypi.org/project/panblack
-.. |PyPI Wheel| image:: https://img.shields.io/pypi/wheel/panblack.svg
-   :target: https://pypi.org/project/panblack
-.. |PyPI Package latest release| image:: https://img.shields.io/pypi/v/panblack.svg
-   :target: https://pypi.org/project/panblack
-.. |GitHub Releases| image:: https://img.shields.io/github/tag/ickc/panblack.svg?label=github+release
-   :target: https://github.com/ickc/panblack/releases
-.. |Development Status| image:: https://img.shields.io/pypi/status/panblack.svg
-   :target: https://pypi.python.org/pypi/panblack/
-.. |Downloads| image:: https://img.shields.io/pypi/dm/panblack.svg
-   :target: https://pypi.python.org/pypi/panblack/
-.. |Commits since latest release| image:: https://img.shields.io/github/commits-since/ickc/panblack/v0.1.0.svg
-   :target: https://github.com/ickc/panblack/compare/v0.1.0...master
-.. |License| image:: https://img.shields.io/pypi/l/panblack.svg
-.. |Conda Recipe| image:: https://img.shields.io/badge/recipe-panblack-green.svg
-   :target: https://anaconda.org/conda-forge/panblack
-.. |Conda Downloads| image:: https://img.shields.io/conda/dn/conda-forge/panblack.svg
-   :target: https://anaconda.org/conda-forge/panblack
-.. |Conda Version| image:: https://img.shields.io/conda/vn/conda-forge/panblack.svg
-   :target: https://anaconda.org/conda-forge/panblack
-.. |Conda Platforms| image:: https://img.shields.io/conda/pn/conda-forge/panblack.svg
-   :target: https://anaconda.org/conda-forge/panblack
-.. |image2| image:: https://github.com/ickc/panblack/workflows/GitHub%20Pages/badge.svg
-   :target: https://ickc.github.io/panblack

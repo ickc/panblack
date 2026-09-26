@@ -30,7 +30,7 @@ classifiers = [
 ]
 homepage = "https://github.com/ickc/panblack"
 repository = "https://github.com/ickc/panblack"
-documentation = "https://ickc.github.io/panblack"
+documentation = "https://github.com/ickc/panblack#readme"
 authors = ["Kolen Cheung <christian.kolen@gmail.com>"]
 readme = "README.rst"
 packages = [
