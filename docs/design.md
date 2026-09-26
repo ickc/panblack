@@ -539,12 +539,12 @@ panblack 0.x was never published to PyPI or conda-forge; users install it from t
 
 | 0.x (`pyproject.toml`) | 1.0 (`.panblack.yaml`) |
 |---|---|
-| `input_format` | `pandoc.from`; for ipynb profiles, `ipynb.cell-format` (with the `ipynb` prefix removed) |
+| `input_format` | `pandoc.from`. For ipynb profiles, `ipynb.cell-format`: the extensions pandoc's ipynb reader and writer used for cells (`ipynb`'s own, close to GFM, with the profile's modifiers applied), written relative to `markdown`. `export-config` lists them with the pandoc 0.x runs. |
 | `require_idempotence_format` | `check`, same meaning. The `"input_format"` entry becomes `source`. |
 | (none: 0.x has no normalizations) | `export-config` writes `normalize: []`, so the output stays as 0.x's. Remove it to get the default normalizations. |
 | `paths`, `exts` | unchanged |
-| `excludes` (regex) | `excludes`, as globs (see [Config]). In a git repository, files git ignores are now skipped too. |
-| `pandoc_args` | `pandoc:` keys, e.g. `--wrap=preserve` → `wrap: preserve`. `--sandbox` is dropped (always on). Unknown args cause an error with a pointer to the docs. |
+| `excludes` (regex) | `excludes`, as globs (see [Config]). A regex that is a literal name (`.` or `\.` read as a literal dot) translates exactly, since 0.x searched the whole path: `name/` becomes `*name/`, `name` becomes `*name*`. Any other regex is an error. In a git repository, files git ignores are now skipped too. |
+| `pandoc_args` | `pandoc:` keys, e.g. `--wrap=preserve` → `wrap: preserve`. `--sandbox` is dropped (always on), and `--ipynb-output` with a note (1.0 never changes outputs). Any other arg is an error with a pointer to the docs. |
 | `del_jupytext_encoding` | removed: `export-config` ignores it with a note (see [Cell-level formatting]) |
 | `post_jupytext_sync`, `jupytext_args` | `hooks: [[jupytext, --sync, ...args, '{path}']]`. `export-config` keeps black/isort pipes as they are and prints the ruff equivalent as a suggestion. |
 | `pandoc_path` | removed (pandoc is bundled) |
@@ -564,7 +564,7 @@ Expect a one-time reformat commit per project, because the pandoc version change
 3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [ipynb] and [External hooks]). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that formatting the text side of a pair needs `jupytext --update` rather than `--sync`, and no jupytext YAML header (see [Alternative: format the text side]).
 4. Settle the open questions, then freeze the config schema.
     - A cache, as black has: **done** (see [Cache]). Runs are already fast (0.06 s for one notebook, 0.5 s for 137, of which about 0.04 s is start-up), so a daemon wouldn't buy much; the cost worth saving is re-running hooks such as jupytext and ruff, and large documents, on files that haven't changed. Watching files is left to tools such as `watchexec`.
-5. Python `v0.2.0` tag: `export-config` and the deprecation notice.
+5. Python `v0.2.0` tag: `export-config` and the deprecation notice. **Done** (`src/panblack/export.py`, tagging pending). On the author's wiki config (three profiles, one ipynb with a spelled-out extension list), the exported config loads in 1.0, formats, and settles; the cell format comes out as `markdown+autolink_bare_uris+east_asian_line_breaks-latex_macros-raw_attribute-table_attributes`, the flavour the list was written to mimic, plus `table_attributes`, which pandoc added later.
 6. panblack 1.0: Hackage (see [Publishing]), feedstock packaging, binaries, pre-commit hook. Migrate the dependent projects.
 7. The wasm build and the editor integration.
 
