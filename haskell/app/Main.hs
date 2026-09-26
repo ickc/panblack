@@ -364,8 +364,7 @@ formatNotebookSource l raw = case readNotebook (TE.encodeUtf8 raw) of
    where
     opts =
       NotebookOptions
-        { nbDropJupytextEncoding = pcDropJupytextEncoding (lConfig l)
-        , nbWholeNotebookCheck = pairedWithMarkdown (notebookMetadata nb)
+        { nbWholeNotebookCheck = pairedWithMarkdown (notebookMetadata nb)
         }
  where
   named = \case

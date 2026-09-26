@@ -378,7 +378,6 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
     reference-location: block
   ipynb:
     cell-format: gfm-tex_math_gfm    # default; see "Markdown flavour for notebooks"
-    drop-jupytext-encoding: true     # default
   hooks:
     - [jupytext, --sync, --pipe, 'ruff check --select I --fix-only -', --pipe, 'ruff format -', '{path}']
 ```
@@ -434,7 +433,7 @@ pandoc's ipynb round trip normalizes more than a formatter should. For example, 
 - **Each cell is a document.** JupyterLab, nbconvert and pandoc's own ipynb reader all read each cell on its own, so the guard checks each cell on its own. A cell whose checks fail is kept as it was, and the other cells are still formatted: the file is *partly reformatted* (exit code 2, so `--check` and pre-commit still flag it). This is the one exception to "a file is written only if every listed check passes" (see [Terminology]): for a notebook, the unit is the cell.
 - **Whole-notebook check, for notebooks paired with markdown** (see [Pairs]). All markdown cells, formatted or kept, are joined (separated by a blank line) into one document, parsed with the *same* cell format, and compared before and after. If it fails, nothing is written. This catches what spans cells in the text side, such as a reference link whose definition is in another cell, or footnotes numbered across the notebook: the writer renumbers each cell's footnotes from 1, so joined they collide. For an unpaired notebook these are faithful per-cell changes. One consequence: a cell holding only a link reference definition becomes empty, since per cell the definition is unused. panblack implements this check itself instead of going through pandoc's ipynb reader, so the reader and writer always agree on the markdown flavour.
 - A failure names the cell (`cell 3: html`, counting all cells from 1) or `all markdown cells`.
-- `ipynb.drop-jupytext-encoding` (default true, as 0.x's `del_jupytext_encoding`) removes `metadata.jupytext.encoding`, also by splicing. 0.x needed it because pandoc 2.x's ipynb writer escaped metadata strings as markdown on every round trip (`# -*- coding: utf-8 -*-` became `\# -\*- coding: utf-8 -\*-`, then `\\\# ...`), so 0.x's stability check always failed on a notebook with that key. Checked with pandoc 2.16.2, the version current when 0.x added the option. jupytext stores the key when it reads a `.py` file with a coding line. pandoc 3.10.2 keeps the string, and 1.0 doesn't pass metadata through pandoc at all.
+- 0.x's `del_jupytext_encoding` (on by default) is dropped: metadata is never changed. 0.x needed it because pandoc 2.x's ipynb writer escaped metadata strings as markdown on every round trip (`# -*- coding: utf-8 -*-` became `\# -\*- coding: utf-8 -\*-`, then `\\\# ...`), so 0.x's stability check always failed on a notebook with that key. Checked with pandoc 2.16.2, the version current when 0.x added the option (Dec 2021). jupytext stores the key when it reads a `.py` file with a coding line. pandoc 3.10.2 keeps the string, and 1.0 doesn't pass metadata through pandoc at all.
 
 Results on 137 distinct notebooks found on the author's machine (tutorials, course material, blog posts), with `check: [source, html]` and `wrap: preserve`, took 0.5 s in all. 2 are paired with markdown. 61 were reformatted and 63 were already formatted. 11 were partly reformatted, keeping 14 cells, all rightly:
 
@@ -532,7 +531,7 @@ panblack 0.x was never published to PyPI or conda-forge; users install it from t
 | `paths`, `exts` | unchanged |
 | `excludes` (regex) | `excludes` (see [Open questions]) |
 | `pandoc_args` | `pandoc:` keys, e.g. `--wrap=preserve` → `wrap: preserve`. `--sandbox` is dropped (always on). Unknown args cause an error with a pointer to the docs. |
-| `del_jupytext_encoding` | `ipynb.drop-jupytext-encoding` |
+| `del_jupytext_encoding` | removed: `export-config` ignores it with a note (see [Cell-level formatting]) |
 | `post_jupytext_sync`, `jupytext_args` | `hooks: [[jupytext, --sync, ...args, '{path}']]`. `export-config` keeps black/isort pipes as they are and prints the ruff equivalent as a suggestion. |
 | `pandoc_path` | removed (pandoc is bundled) |
 | `processes`, `mode` | `-j` |
@@ -618,6 +617,7 @@ Nothing here blocks prototyping. Each question has a provisional choice that the
 | Normalizations: option names, defaults, how to turn them off | a `normalize:` list, all on by default, `[]` for none; see [Normalizations] | before freeze |
 | wasm tiers | settled: one tier, `md+html` | spike (step 1), done |
 | `excludes` regex or globs | gitignore-style globs (done); whether to read `.gitignore` is still open | usage on real repos |
+| ipynb: partial formatting and the whole-notebook check (see [Cell-level formatting]). Three things to revisit: a notebook paired with a markdown file that nothing renders as one document (e.g. kept only for diffs) is still rejected for footnotes numbered across cells, which may call for `ipynb.whole-notebook-check: never`; without the check, a cell holding only a link reference definition becomes empty, which is faithful per cell but deletes what the author wrote, so it might be rejected instead; and a partly reformatted file exits 2 on every run until its kept cells are fixed by hand | per cell, keep rejected cells; whole-notebook check only when paired with markdown | usage |
 | ipynb: cell-level or whole-notebook round trip | settled: cell-level (see [Cell-level formatting]) | step 3, done |
 | Hooks or pre-commit only | hooks | usage |
 | Licence: GPL-2.0-or-later (like pandoc and pandoc-crossref) or keep BSD-3 | GPL-2.0-or-later; see [Licence] | before the repo is public |

@@ -56,7 +56,6 @@ data ProfileConfig = ProfileConfig
   , pcCellFormat :: Text
   -- ^ The markdown flavour of notebook cells; @pandoc.from@ and @to@ are
   -- for the other files.
-  , pcDropJupytextEncoding :: Bool
   , pcHooks :: [[Text]]
   -- ^ Commands run on each accepted file, @{path}@ substituted.
   }
@@ -75,7 +74,6 @@ defaultProfileConfig =
     , pcDefaults = Nothing
     , pcPandoc = KM.empty
     , pcCellFormat = "gfm-tex_math_gfm"
-    , pcDropJupytextEncoding = True
     , pcHooks = []
     }
 
@@ -96,7 +94,7 @@ parseConfig bs = do
     pandoc <- o .:? "pandoc" .!= KM.empty
     unknownKeys (where' <> "pandoc: ") pandocKeys pandoc
     ipynb <- o .:? "ipynb" .!= KM.empty
-    unknownKeys (where' <> "ipynb: ") ["cell-format", "drop-jupytext-encoding"] ipynb
+    unknownKeys (where' <> "ipynb: ") ["cell-format"] ipynb
     hooks <- o .:? "hooks" .!= []
     when (any null hooks) $ fail (where' <> "hooks: a command can't be empty")
     ProfileConfig paths
@@ -107,7 +105,6 @@ parseConfig bs = do
       <*> o .:? "defaults"
       <*> pure pandoc
       <*> ipynb .:? "cell-format" .!= pcCellFormat d
-      <*> ipynb .:? "drop-jupytext-encoding" .!= pcDropJupytextEncoding d
       <*> pure hooks
   normalizationNamed where' name =
     maybe

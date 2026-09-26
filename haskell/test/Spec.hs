@@ -95,11 +95,12 @@ main = do
   check "config: unknown normalization" $ isLeft (parsed "- paths: [a]\n  normalize: [tables]\n")
   check "config: not a list" $ isLeft (parsed "paths: [a]\n")
   check "config: ipynb and hooks" $
-    fmap (map (\p -> (pcCellFormat p, pcDropJupytextEncoding p, pcHooks p))) (parsed "- paths: [a]\n  ipynb: {cell-format: gfm, drop-jupytext-encoding: false}\n  hooks: [[jupytext, --sync, '{path}']]\n")
-      == Right [("gfm", False, [["jupytext", "--sync", "{path}"]])]
+    fmap (map (\p -> (pcCellFormat p, pcHooks p))) (parsed "- paths: [a]\n  ipynb: {cell-format: gfm}\n  hooks: [[jupytext, --sync, '{path}']]\n")
+      == Right [("gfm", [["jupytext", "--sync", "{path}"]])]
   check "config: ipynb defaults" $
-    fmap (map (\p -> (pcCellFormat p, pcDropJupytextEncoding p, pcHooks p))) (parsed "- paths: [a]\n") == Right [("gfm-tex_math_gfm", True, [])]
+    fmap (map (\p -> (pcCellFormat p, pcHooks p))) (parsed "- paths: [a]\n") == Right [("gfm-tex_math_gfm", [])]
   check "config: unknown ipynb key" $ isLeft (parsed "- paths: [a]\n  ipynb: {format: gfm}\n")
+  check "config: drop-jupytext-encoding is gone" $ isLeft (parsed "- paths: [a]\n  ipynb: {drop-jupytext-encoding: true}\n")
   check "config: empty hook" $ isLeft (parsed "- paths: [a]\n  hooks: [[]]\n")
   check "starter config parses" $
     fmap (map pcNormalize) (parsed (encodeUtf8' starterConfig)) == Right [[minBound .. maxBound]]
@@ -122,42 +123,31 @@ main = do
 
   -- Notebooks
   let nbProfile = let p = either (error . show) id (markdownProfile "gfm-tex_math_gfm" "gfm-tex_math_gfm" def def) in p {profileChecks = [sourceCheck p, htmlCheck]}
-      formatNb dropEnc whole bs = formatNotebook (NotebookOptions dropEnc whole) nbProfile (either (error . T.unpack) id (readNotebook bs))
-      fmtNb dropEnc bs = either (Left . failWhere) (Right . resultBytes) (formatNb dropEnc True bs)
+      formatNb whole bs = formatNotebook (NotebookOptions whole) nbProfile (either (error . T.unpack) id (readNotebook bs))
+      fmtNb bs = either (Left . failWhere) (Right . resultBytes) (formatNb True bs)
       nb cells meta = "{\n \"cells\": [" <> B.intercalate "," cells <> "\n ],\n \"metadata\": " <> meta <> ",\n \"nbformat\": 4,\n \"nbformat_minor\": 5\n}\n"
       mdCell src = "\n  {\n   \"cell_type\": \"markdown\",\n   \"metadata\": {},\n   \"source\": " <> src <> "\n  }"
       code = "\n  {\n   \"cell_type\": \"code\",\n   \"execution_count\": 1.50,\n   \"metadata\": {},\n   \"outputs\": [],\n   \"source\": [\n    \"x  =  _a_\"\n   ]\n  }"
   check "notebook: a list keeps its layout, other bytes are kept" $
-    fmtNb False (nb [mdCell "[\n    \"Title\\n\",\n    \"=====\\n\",\n    \"\\n\",\n    \"_a_\"\n   ]", code] "{\"x\": 3}")
+    fmtNb (nb [mdCell "[\n    \"Title\\n\",\n    \"=====\\n\",\n    \"\\n\",\n    \"_a_\"\n   ]", code] "{\"x\": 3}")
       == Right (nb [mdCell "[\n    \"# Title\\n\",\n    \"\\n\",\n    \"*a*\"\n   ]", code] "{\"x\": 3}")
   check "notebook: a string stays a string, with its final newline" $
-    fmtNb False (nb [mdCell "\"_a_\\n\\n* b\\n\""] "{}") == Right (nb [mdCell "\"*a*\\n\\n- b\\n\""] "{}")
+    fmtNb (nb [mdCell "\"_a_\\n\\n* b\\n\""] "{}") == Right (nb [mdCell "\"*a*\\n\\n- b\\n\""] "{}")
   check "notebook: formatted cells are unchanged" $
-    let x = nb [mdCell (TE.encodeUtf8 "[\"# T\\n\", \"\\n\", \"é \\\"q\\\"\"]"), code] "{}" in fmtNb True x == Right x
+    let x = nb [mdCell (TE.encodeUtf8 "[\"# T\\n\", \"\\n\", \"é \\\"q\\\"\"]"), code] "{}" in fmtNb x == Right x
   check "notebook: non-ASCII written as the file does" $
-    fmtNb False (nb [mdCell "\"_\\u00e9_\""] "{}") == Right (nb [mdCell "\"*\\u00e9*\""] "{}")
-      && fmtNb False (nb [mdCell (TE.encodeUtf8 "\"_é_\"")] "{}") == Right (nb [mdCell (TE.encodeUtf8 "\"*é*\"")] "{}")
-  let jt members = "{\n  \"jupytext\": {" <> B.intercalate "," members <> "\n  }\n }"
-      enc = "\n   \"encoding\": \"# -*- coding: utf-8 -*-\""
-      fmts = "\n   \"formats\": \"ipynb,md\""
-      other = "\n   \"x\": [1, 2]"
-      dropped members = fmtNb True (nb [mdCell "\"a\""] (jt members))
-  check "notebook: jupytext encoding dropped wherever it is" $
-    dropped [enc, fmts, other] == Right (nb [mdCell "\"a\""] (jt [fmts, other]))
-      && dropped [fmts, enc, other] == Right (nb [mdCell "\"a\""] (jt [fmts, other]))
-      && dropped [fmts, other, enc] == Right (nb [mdCell "\"a\""] (jt [fmts, other]))
-      && dropped [enc] == Right (nb [mdCell "\"a\""] "{\n  \"jupytext\": {}\n }")
-      && fmtNb False (nb [mdCell "\"a\""] (jt [enc])) == Right (nb [mdCell "\"a\""] (jt [enc]))
+    fmtNb (nb [mdCell "\"_\\u00e9_\""] "{}") == Right (nb [mdCell "\"*\\u00e9*\""] "{}")
+      && fmtNb (nb [mdCell (TE.encodeUtf8 "\"_é_\"")] "{}") == Right (nb [mdCell (TE.encodeUtf8 "\"*é*\"")] "{}")
   check "notebook: a reference defined in another cell fails the whole-notebook check" $
-    fmtNb False (nb [mdCell "\"[a]\"", mdCell "\"[a]: http://x\""] "{}") == Left "all markdown cells"
+    fmtNb (nb [mdCell "\"[a]\"", mdCell "\"[a]: http://x\""] "{}") == Left "all markdown cells"
   check "notebook: cells are independent without the whole-notebook check" $
-    fmap resultBytes (either (Left . failWhere) Right (formatNb False False (nb [mdCell "\"[a]\"", mdCell "\"[a]: http://x\""] "{}")))
+    fmap resultBytes (either (Left . failWhere) Right (formatNb False (nb [mdCell "\"[a]\"", mdCell "\"[a]: http://x\""] "{}")))
       -- The definition is unused in its own cell, so the writer drops it.
       == Right (nb [mdCell "\"\\\\[a\\\\]\"", mdCell "\"\""] "{}")
   -- The gfm writer drops the parentheses in @\\(a\\)@ (pandoc 3.10.2).
   let rejectedCell = mdCell "\"x (\\\\\\\\(a\\\\\\\\)) y\""
   check "notebook: a rejected cell is kept, the others formatted" $
-    case formatNb False True (nb [mdCell "\"_a_\"", code, rejectedCell] "{}") of
+    case formatNb True (nb [mdCell "\"_a_\"", code, rejectedCell] "{}") of
       Right r -> resultBytes r == nb [mdCell "\"*a*\"", code, rejectedCell] "{}" && map failWhere (resultKept r) == ["cell 3"]
       Left _ -> False
   check "notebook: not JSON" $ isLeft (readNotebook "{\"cells\": [}")

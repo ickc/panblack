@@ -51,8 +51,7 @@ data J = J
 data Node = Obj [Member] | Arr [J] | Leaf
 
 data Member = Member
-  { mKeyStart :: !Int
-  , mKey :: Text
+  { mKey :: Text
   , mValue :: J
   }
 
@@ -78,9 +77,7 @@ notebookMetadata nb = case nbValue nb of
   _ -> KM.empty
 
 data NotebookOptions = NotebookOptions
-  { nbDropJupytextEncoding :: Bool
-  -- ^ Remove @metadata.jupytext.encoding@, as 0.x's @del_jupytext_encoding@.
-  , nbWholeNotebookCheck :: Bool
+  { nbWholeNotebookCheck :: Bool
   -- ^ Also check all markdown cells joined into one document.
   }
 
@@ -115,7 +112,7 @@ formatNotebook opts profile nb = do
     () <$ failingAt "all markdown cells" (compareSources profile (joined (map cellSource cells)) (joined outs))
   pure
     NotebookResult
-      { resultBytes = splice bytes (sourceEdits changed ++ encodingEdit)
+      { resultBytes = splice bytes (sourceEdits changed)
       , resultAccepted = accepted
       , resultKept = [f | Left f <- results]
       }
@@ -139,18 +136,6 @@ formatNotebook opts profile nb = do
         Right (Right (out', formattedBy f))
   asciiOnly = B.all (< 0x80) bytes
   sourceEdits changed = [(jStart j, jEnd j, encodeSource asciiOnly bytes j new) | (c, new) <- changed, let j = cellJson c]
-  encodingEdit
-    | nbDropJupytextEncoding opts
-    , Just meta <- member "metadata" (nbJson nb)
-    , Just jt@J {jNode = Obj ms} <- member "jupytext" meta =
-        -- Remove the member with the separator before it, or after it if
-        -- it's the first.
-        case break ((== "encoding") . mKey) ms of
-          (_, []) -> []
-          ([], [_]) -> [(jStart jt + 1, jEnd jt - 1, "")]
-          ([], m : next : _) -> [(mKeyStart m, mKeyStart next, "")]
-          (before, m : _) -> [(maximum (map (jEnd . mValue) before), jEnd (mValue m), "")]
-    | otherwise = []
 
 data Cell = Cell
   { cellNumber :: Int
@@ -269,7 +254,7 @@ scan bs = do
     let colon = ws ke
     guard (at colon == 0x3A)
     v <- value (ws (colon + 1))
-    pure (Member i key v)
+    pure (Member key v)
   container :: Int -> Word8 -> ([a] -> Node) -> (a -> Int) -> (Int -> Maybe a) -> Maybe J
   container s close mk endOf item = go (ws (s + 1)) []
    where
