@@ -12,7 +12,7 @@ import Panblack.Config
 import Panblack.Diff (unifiedDiff)
 import Panblack.Discover (compileExclude, excluded, relativeTo)
 import Panblack.Guard
-import Panblack.Jupytext (pairedPaths)
+import Panblack.Jupytext (pairedPaths, pairedWithMarkdown)
 import Panblack.Notebook
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize
@@ -122,7 +122,8 @@ main = do
 
   -- Notebooks
   let nbProfile = let p = either (error . show) id (markdownProfile "gfm-tex_math_gfm" "gfm-tex_math_gfm" def def) in p {profileChecks = [sourceCheck p, htmlCheck]}
-      fmtNb dropEnc bs = either (Left . failWhere) (Right . fst) . formatNotebook (NotebookOptions dropEnc) nbProfile =<< either (error . T.unpack) Right (readNotebook bs)
+      formatNb dropEnc whole bs = formatNotebook (NotebookOptions dropEnc whole) nbProfile (either (error . T.unpack) id (readNotebook bs))
+      fmtNb dropEnc bs = either (Left . failWhere) (Right . resultBytes) (formatNb dropEnc True bs)
       nb cells meta = "{\n \"cells\": [" <> B.intercalate "," cells <> "\n ],\n \"metadata\": " <> meta <> ",\n \"nbformat\": 4,\n \"nbformat_minor\": 5\n}\n"
       mdCell src = "\n  {\n   \"cell_type\": \"markdown\",\n   \"metadata\": {},\n   \"source\": " <> src <> "\n  }"
       code = "\n  {\n   \"cell_type\": \"code\",\n   \"execution_count\": 1.50,\n   \"metadata\": {},\n   \"outputs\": [],\n   \"source\": [\n    \"x  =  _a_\"\n   ]\n  }"
@@ -149,9 +150,16 @@ main = do
       && fmtNb False (nb [mdCell "\"a\""] (jt [enc])) == Right (nb [mdCell "\"a\""] (jt [enc]))
   check "notebook: a reference defined in another cell fails the whole-notebook check" $
     fmtNb False (nb [mdCell "\"[a]\"", mdCell "\"[a]: http://x\""] "{}") == Left "all markdown cells"
+  check "notebook: cells are independent without the whole-notebook check" $
+    fmap resultBytes (either (Left . failWhere) Right (formatNb False False (nb [mdCell "\"[a]\"", mdCell "\"[a]: http://x\""] "{}")))
+      -- The definition is unused in its own cell, so the writer drops it.
+      == Right (nb [mdCell "\"\\\\[a\\\\]\"", mdCell "\"\""] "{}")
   -- The gfm writer drops the parentheses in @\\(a\\)@ (pandoc 3.10.2).
-  check "notebook: a failing cell is named" $
-    fmtNb False (nb [mdCell "\"a\"", code, mdCell "\"x (\\\\\\\\(a\\\\\\\\)) y\""] "{}") == Left "cell 3"
+  let rejectedCell = mdCell "\"x (\\\\\\\\(a\\\\\\\\)) y\""
+  check "notebook: a rejected cell is kept, the others formatted" $
+    case formatNb False True (nb [mdCell "\"_a_\"", code, rejectedCell] "{}") of
+      Right r -> resultBytes r == nb [mdCell "\"*a*\"", code, rejectedCell] "{}" && map failWhere (resultKept r) == ["cell 3"]
+      Left _ -> False
   check "notebook: not JSON" $ isLeft (readNotebook "{\"cells\": [}")
 
   -- Pairs, as jupytext's paired_paths resolves them
@@ -165,6 +173,10 @@ main = do
   check "pairs: prefix roots are not resolved" $ null (paired "/a/notebooks/x/nb.ipynb" "notebooks///ipynb,scripts///py:percent")
   check "pairs: inconsistent path" $ null (paired "/a/b/nb.ipynb" "notebooks//ipynb,scripts//py")
   check "pairs: unpaired" $ null (pairedPaths "/a/nb.ipynb" KM.empty)
+  let withFormats f = KM.fromList [("jupytext", A.object [("formats", A.String f)])]
+  check "pairs: with markdown" $
+    pairedWithMarkdown (withFormats "ipynb,md") && pairedWithMarkdown (withFormats "notebooks///ipynb,md///md:myst")
+      && not (pairedWithMarkdown (withFormats "ipynb,py:percent")) && not (pairedWithMarkdown KM.empty)
 
   n <- readIORef failures
   if n == 0 then putStrLn "all passed" else exitFailure

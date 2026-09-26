@@ -6,15 +6,18 @@
 -- A cell's new source keeps the shape of the old one (a JSON string, or a
 -- list of lines laid out as before).
 --
--- The guard runs per cell, and then on all markdown cells joined into one
--- document, which catches what spans cells, such as a reference link whose
--- definition is in another cell.
+-- The guard runs per cell. A cell it rejects is kept as it was, and the
+-- others are still formatted. For a notebook whose cells are also read as
+-- one document (the markdown side of a jupytext pair), the guard then runs
+-- on all markdown cells joined, which catches what spans cells, such as a
+-- reference link whose definition is in another cell.
 module Panblack.Notebook
   ( Notebook
   , readNotebook
   , notebookMetadata
   , NotebookOptions (..)
   , NotebookFailure (..)
+  , NotebookResult (..)
   , formatNotebook
   ) where
 
@@ -77,6 +80,8 @@ notebookMetadata nb = case nbValue nb of
 data NotebookOptions = NotebookOptions
   { nbDropJupytextEncoding :: Bool
   -- ^ Remove @metadata.jupytext.encoding@, as 0.x's @del_jupytext_encoding@.
+  , nbWholeNotebookCheck :: Bool
+  -- ^ Also check all markdown cells joined into one document.
   }
 
 data NotebookFailure = NotebookFailure
@@ -85,33 +90,53 @@ data NotebookFailure = NotebookFailure
   , failGuard :: GuardFailure
   }
 
--- | Format a notebook's markdown cells with a markdown profile. Returns the
--- new bytes, which may be the same as the old.
-formatNotebook :: NotebookOptions -> Profile -> Notebook -> Either NotebookFailure (ByteString, Accepted)
+data NotebookResult = NotebookResult
+  { resultBytes :: ByteString
+  -- ^ May be the same as the old.
+  , resultAccepted :: Accepted
+  , resultKept :: [NotebookFailure]
+  -- ^ The cells kept as they were, because the guard rejected them.
+  }
+
+-- | Format a notebook's markdown cells with a markdown profile. Fails if
+-- pandoc fails on a cell, or if the whole-notebook check fails; then
+-- nothing is written.
+formatNotebook :: NotebookOptions -> Profile -> Notebook -> Either NotebookFailure NotebookResult
 formatNotebook opts profile nb = do
-  formatted <- traverse formatCell cells
-  let changed = [(c, new) | (c, (new, _)) <- zip cells formatted, new /= cellSource c]
-      accepted = case [a | (_, a@(ChecksPassed _)) <- formatted] of
+  results <- traverse formatCell cells
+  let outs = [either (const (cellSource c)) fst r | (c, r) <- zip cells results]
+      changed = [(c, new) | (c, new) <- zip cells outs, new /= cellSource c]
+      accepted = case [a | Right (_, a@(ChecksPassed _)) <- results] of
         a : _ -> a
         [] -> AstEqual
   -- With a single cell, the per-cell check already covers the notebook.
-  when (length cells > 1 && not (null changed)) $ do
+  when (nbWholeNotebookCheck opts && length cells > 1 && not (null changed)) $ do
     let joined = T.intercalate "\n\n" . map (T.filter (/= '\r'))
-    () <$ failingAt "all markdown cells" (compareSources profile (joined (map cellSource cells)) (joined (map fst formatted)))
-  pure (splice bytes (sourceEdits changed ++ encodingEdit), accepted)
+    () <$ failingAt "all markdown cells" (compareSources profile (joined (map cellSource cells)) (joined outs))
+  pure
+    NotebookResult
+      { resultBytes = splice bytes (sourceEdits changed ++ encodingEdit)
+      , resultAccepted = accepted
+      , resultKept = [f | Left f <- results]
+      }
  where
   bytes = nbBytes nb
   cells = markdownCells nb
   failingAt w = either (Left . NotebookFailure w) Right
+  -- Right (Left _): rejected, kept as it was.
   formatCell c = do
     let src = cellSource c
-    f <- failingAt ("cell " <> T.pack (show (cellNumber c))) $ format profile (T.filter (/= '\r') src)
-    -- A cell's source usually has no final newline; keep what it had.
-    let out = formattedText f
-        out'
-          | "\n" `T.isSuffixOf` src = out
-          | otherwise = fromMaybe out (T.stripSuffix "\n" out)
-    pure (out', formattedBy f)
+        name = "cell " <> T.pack (show (cellNumber c))
+    case format profile (T.filter (/= '\r') src) of
+      Left e@(PandocFailed _) -> Left (NotebookFailure name e)
+      Left e@ChecksFailed {} -> Right (Left (NotebookFailure name e))
+      Right f -> do
+        -- A cell's source usually has no final newline; keep what it had.
+        let out = formattedText f
+            out'
+              | "\n" `T.isSuffixOf` src = out
+              | otherwise = fromMaybe out (T.stripSuffix "\n" out)
+        Right (Right (out', formattedBy f))
   asciiOnly = B.all (< 0x80) bytes
   sourceEdits changed = [(jStart j, jEnd j, encodeSource asciiOnly bytes j new) | (c, new) <- changed, let j = cellJson c]
   encodingEdit

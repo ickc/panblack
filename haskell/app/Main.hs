@@ -23,7 +23,7 @@ import Panblack.Config
 import Panblack.Diff (unifiedDiff)
 import Panblack.Discover
 import Panblack.Guard
-import Panblack.Jupytext (pairedPaths)
+import Panblack.Jupytext (pairedPaths, pairedWithMarkdown)
 import Panblack.Notebook
 import Paths_panblack (version)
 import System.Console.GetOpt
@@ -106,6 +106,9 @@ data Outcome
   | Changed Text Text Accepted
   -- ^ The original and the formatted source.
   | Rejected [CheckDiff]
+  | PartlyChanged Text Text [CheckDiff]
+  -- ^ Some notebook cells were formatted; those that failed their checks
+  -- were kept as they were.
   | Failed Text
 
 -- | What happened to one file.
@@ -209,8 +212,8 @@ formatFiles opts cwd only loaded jobs = do
     forM_ (rWarnings r) $ \w -> hPutStrLn stderr ("warning: " <> shown <> ": " <> w)
     report opts shown outcome
     forM_ (rHookError r) $ \e -> hPutStrLn stderr ("error: " <> shown <> ": " <> T.unpack e)
-    case outcome of
-      Changed old out _ | optDiff opts -> TIO.putStr (unifiedDiff (T.pack shown) (T.pack shown) old out)
+    case rewritten outcome of
+      Just (old, out) | optDiff opts -> TIO.putStr (unifiedDiff (T.pack shown) (T.pack shown) old out)
       _ -> pure ()
     pure (max (exitCodeOf opts outcome) (maybe 0 (const 3) (rHookError r)))
   summary opts (map (rOutcome . snd) results) (length [() | (_, Result {rHookError = Just _}) <- results])
@@ -242,17 +245,25 @@ formatFile opts cwd covered l f = do
                 )
             else (,[]) <$> formatSource l raw
         let dry = optCheck opts || optDiff opts
-        case outcome of
-          Changed _ out _ | not dry -> B.writeFile f (TE.encodeUtf8 out)
+        case rewritten outcome of
+          Just (_, out) | not dry -> B.writeFile f (TE.encodeUtf8 out)
           _ -> pure ()
         -- As 0.x ran jupytext after every accepted file, changed or not.
         hookError <- case outcome of
           _ | dry -> pure Nothing
           Unchanged -> runHooks l f
           Changed {} -> runHooks l f
+          PartlyChanged {} -> runHooks l f
           _ -> pure Nothing
         pure (Result outcome warnings hookError)
   pure $ either (\e -> Result (Failed (T.pack (displayException (e :: SomeException)))) [] Nothing) id r
+
+-- | The original and the text to write, if there is one.
+rewritten :: Outcome -> Maybe (Text, Text)
+rewritten = \case
+  Changed old out _ -> Just (old, out)
+  PartlyChanged old out _ -> Just (old, out)
+  _ -> Nothing
 
 isNotebook :: FilePath -> Bool
 isNotebook f = takeExtension f == ".ipynb"
@@ -303,8 +314,8 @@ formatStdin opts noConfig cwd loaded = do
   let name = fromMaybe "-" (optStdinFilename opts)
       quiet = optCheck opts || optDiff opts
   report opts {optVerbose = optVerbose opts && quiet} name outcome
-  case outcome of
-    Changed _ out _
+  case rewritten outcome of
+    Just (_, out)
       | optDiff opts -> TIO.putStr (unifiedDiff (T.pack name) (T.pack name) raw out)
       | not quiet -> TIO.putStr out
     -- Pass the input through, so a pipe never loses the document.
@@ -342,22 +353,35 @@ formatNotebookSource l raw = case readNotebook (TE.encodeUtf8 raw) of
   Right nb -> fmap (,notebookMetadata nb) . forceOutcome $
     case formatNotebook opts (lCellProfile l) nb of
       Left (NotebookFailure w (PandocFailed e)) -> Failed (w <> ": " <> renderError e)
-      Left (NotebookFailure w (ChecksFailed _ _ ds)) -> Rejected [d {diffCheck = w <> ": " <> diffCheck d} | d <- ds]
-      Right (new, by)
+      Left f -> Rejected (named f)
+      Right r
+        | not (null kept) -> if out == raw then Rejected kept else PartlyChanged raw out kept
         | out == raw -> Unchanged
-        | otherwise -> Changed raw out by
+        | otherwise -> Changed raw out (resultAccepted r)
        where
-        out = TE.decodeUtf8Lenient new
+        out = TE.decodeUtf8Lenient (resultBytes r)
+        kept = concatMap named (resultKept r)
+   where
+    opts =
+      NotebookOptions
+        { nbDropJupytextEncoding = pcDropJupytextEncoding (lConfig l)
+        , nbWholeNotebookCheck = pairedWithMarkdown (notebookMetadata nb)
+        }
  where
-  opts = NotebookOptions {nbDropJupytextEncoding = pcDropJupytextEncoding (lConfig l)}
+  named = \case
+    NotebookFailure w (ChecksFailed _ _ ds) -> [d {diffCheck = w <> ": " <> diffCheck d} | d <- ds]
+    NotebookFailure _ (PandocFailed _) -> []
 
 forceOutcome :: Outcome -> IO Outcome
 forceOutcome o = do
   outcome <- evaluate o
   case outcome of
-    Rejected ds -> forM_ ds $ \d -> evaluate (T.length (diffCheck d) + T.length (diffBefore d) + T.length (diffAfter d))
+    Rejected ds -> forceDiffs ds
+    PartlyChanged _ out ds -> evaluate (T.length out) >> forceDiffs ds
     _ -> pure ()
   pure outcome
+ where
+  forceDiffs ds = forM_ ds $ \d -> evaluate (T.length (diffCheck d) + T.length (diffBefore d) + T.length (diffAfter d))
 
 report :: Opts -> String -> Outcome -> IO ()
 report opts name = \case
@@ -370,19 +394,28 @@ report opts name = \case
             say ("  pandoc reads it differently, but the checks render it the same: " <> T.unpack (T.intercalate ", " cs))
       _ -> pure ()
   Rejected ds -> do
-    say ("rejected " <> name <> ": pandoc renders it differently after formatting (failed checks: " <> T.unpack (T.intercalate ", " (map diffCheck ds)) <> ")")
-    when (optVerbose opts) $ forM_ ds $ \d ->
-      TIO.hPutStr stderr $
-        unifiedDiff ("check " <> diffCheck d <> ": original") ("check " <> diffCheck d <> ": formatted") (diffBefore d) (diffAfter d)
+    say ("rejected " <> name <> ": pandoc renders it differently after formatting (failed checks: " <> failed ds <> ")")
+    diffs ds
+  PartlyChanged _ _ ds -> do
+    say
+      ( (if optCheck opts || optDiff opts then "would partly reformat " else "partly reformatted ") <> name
+          <> ": kept the cells that pandoc renders differently after formatting (failed checks: " <> failed ds <> ")"
+      )
+    diffs ds
   Failed e -> say ("error: " <> name <> ": " <> T.unpack e)
  where
   say = hPutStrLn stderr
+  failed = T.unpack . T.intercalate ", " . map diffCheck
+  diffs ds = when (optVerbose opts) $ forM_ ds $ \d ->
+    TIO.hPutStr stderr $
+      unifiedDiff ("check " <> diffCheck d <> ": original") ("check " <> diffCheck d <> ": formatted") (diffBefore d) (diffAfter d)
 
 summary :: Opts -> [Outcome] -> Int -> IO ()
 summary opts outcomes hookFailures =
   hPutStrLn stderr . T.unpack . T.intercalate ", " $
     [count n (if dry then "would be reformatted" else "reformatted") | let n = length [() | Changed {} <- outcomes], n > 0]
       ++ [count n (if dry then "would be left unchanged" else "left unchanged") | let n = length [() | Unchanged <- outcomes], n > 0]
+      ++ [count n (if dry then "would be partly reformatted" else "partly reformatted") | let n = length [() | PartlyChanged {} <- outcomes], n > 0]
       ++ [count n "rejected" | let n = length [() | Rejected {} <- outcomes], n > 0]
       ++ [count n "failed" | let n = length [() | Failed {} <- outcomes], n > 0]
       ++ [count hookFailures "failed a hook" | hookFailures > 0]
@@ -396,6 +429,7 @@ exitCodeOf opts = \case
   Unchanged -> 0
   Changed {} -> if optCheck opts then 1 else 0
   Rejected {} -> 2
+  PartlyChanged {} -> 2
   Failed {} -> 3
 
 exitWith' :: Int -> IO ()

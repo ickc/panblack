@@ -8,6 +8,7 @@
 -- resolved; the notebook then has no known pairs.
 module Panblack.Jupytext
   ( pairedPaths
+  , pairedWithMarkdown
   ) where
 
 import Data.Aeson (Value (..))
@@ -29,18 +30,29 @@ data Format = Format
 -- Empty if the notebook isn't paired, or the pairing can't be resolved.
 pairedPaths :: FilePath -> KM.KeyMap Value -> [FilePath]
 pairedPaths path meta = fromMaybe [] $ do
-  Object jt <- KM.lookup "jupytext" meta
-  specs <- case KM.lookup "formats" jt of
-    Just (String s) -> Just (filter (not . T.null) (T.splitOn "," s))
-    Just (Array xs) -> traverse (\case String s -> Just s; _ -> Nothing) (toList xs)
-    _ -> Nothing
-  formats <- traverse (parseFormat autoExt) specs
+  formats <- pairedFormats meta
   if any (("//" `isInfixOf`) . fPrefix) formats
     then Nothing
     else do
       own : _ <- Just [f | f <- formats, fExt f == takeExtension path]
       base <- basePath path own
       Just [normalise (fullPath base f) | f <- formats, fExt f /= fExt own || fSuffix f /= fSuffix own || fPrefix f /= fPrefix own]
+
+-- | Whether the notebook is paired with a markdown file, whose cells a
+-- markdown reader then reads as one document.
+pairedWithMarkdown :: KM.KeyMap Value -> Bool
+pairedWithMarkdown meta =
+  any ((`elem` [".md", ".markdown", ".Rmd", ".qmd", ".myst", ".mystnb", ".mnb"]) . fExt) (fromMaybe [] (pairedFormats meta))
+
+-- | The formats in the notebook's @jupytext.formats@.
+pairedFormats :: KM.KeyMap Value -> Maybe [Format]
+pairedFormats meta = do
+  Object jt <- KM.lookup "jupytext" meta
+  specs <- case KM.lookup "formats" jt of
+    Just (String s) -> Just (filter (not . T.null) (T.splitOn "," s))
+    Just (Array xs) -> traverse (\case String s -> Just s; _ -> Nothing) (toList xs)
+    _ -> Nothing
+  traverse (parseFormat autoExt) specs
  where
   autoExt = case KM.lookup "language_info" meta of
     Just (Object li) | Just (String e) <- KM.lookup "file_extension" li -> Just (T.unpack e)
