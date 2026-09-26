@@ -167,8 +167,8 @@ Assuming table widths are reset (see [Tables]; an option whose name and default 
 
 ```yaml
 pandoc:
-  from: markdown-simple_tables-multiline_tables-smart
-  to: markdown-simple_tables-multiline_tables-smart
+  from: markdown-simple_tables-multiline_tables-smart-latex_macros
+  to: markdown-simple_tables-multiline_tables-smart-latex_macros-raw_attribute
   wrap: preserve
   columns: 72                                   # pandoc's default
 check: [source, html]
@@ -177,6 +177,10 @@ check: [source, html]
 Everything else stays at pandoc's defaults (`markdown-headings: atx`, inline links, `reference-location: document`, `tab-stop: 4`). These are pure style and don't affect what the guard accepts. Your 0.x configs used `reference-location: block`.
 
 **No `smart`.** Typography is left to production: keep `smart` in your own pandoc runs, but format without it. With `smart`, the writer rewrites what you typed: curly quotes and apostrophes become straight ones, and an invisible non-breaking space (U+00A0) goes after abbreviations such as `p.` and `Mr.` (see [Upstream issues] 5). Without it, the text is kept exactly as typed. On the corpus, every file accepted without `smart` also renders the same html when read *with* `smart`: `smart` only changes how text is typeset, and formatting without it doesn't touch the text.
+
+**No `latex_macros`.** With it, the reader expands macros defined in the source, and the writer writes the expansion in place: after `\newcommand{\R}{\mathbb{R}}`, `$x \in \R$` becomes `$x \in \mathbb{R}$`. The html is the same, so the guard would accept it. It has to be off when reading too, since that is where macros are expanded. As with `smart`, this doesn't change your own pandoc run with `latex_macros`: the definitions and the math are kept as typed, so pandoc expands them the same way. On the corpus it changes nothing, because its macros are all in code blocks.
+
+**No `raw_attribute` in `to` only.** With it, the writer wraps raw TeX and inline HTML in pandoc's raw syntax: `\cite{foo}` becomes `` `\cite{foo}`{=tex} `` and `<kbd>` becomes `` `<kbd>`{=html} ``. pandoc renders these the same, but other renderers (GitHub, JupyterLab, editors) don't. On the corpus it does this in 5 places in `changelog.md`, and it gets `INSTALL.md` rejected, because a multi-line `<a ...>` tag is wrapped and reads back differently. Without it in `to`, raw TeX and HTML are kept as typed, `INSTALL.md` is accepted, and no file gains `{=...}`. It stays on in `from`, as in pandoc: turned off there, a ```` ```{=latex} ```` block reads as inline code, and the guard accepts rewriting it as such. A raw block the writer can't write natively (e.g. ```` ```{=typst} ````) is lost when writing, which the checks catch, so such a file is rejected.
 
 **Only grid and pipe tables.** The happy case assumes sources have no simple or multiline tables; see [Known limitations]. They are disabled for reading as well as writing, and grid and pipe tables are what people mostly use in the wild anyway.
 
@@ -363,7 +367,8 @@ The file is `.panblack.yaml`. It holds a list of profiles, like the 0.x array of
   check: [source, html]    # all must pass; default [source] (see Terminology)
   normalize: [table-widths, table-cell-breaks]   # default all (see Normalizations)
   pandoc:                  # inline pandoc defaults file (alternatively: defaults: path/to/file.yaml)
-    from: markdown-raw_attribute-latex_macros-simple_tables-multiline_tables+east_asian_line_breaks+autolink_bare_uris
+    from: markdown-latex_macros-simple_tables-multiline_tables+east_asian_line_breaks+autolink_bare_uris
+    to: markdown-latex_macros-simple_tables-multiline_tables+east_asian_line_breaks+autolink_bare_uris-raw_attribute
     wrap: preserve
     columns: 120
     reference-location: block
@@ -548,6 +553,7 @@ panblack 0.x was never published to PyPI or conda-forge; users install it from t
 | `del_jupytext_encoding` | removed: `export-config` ignores it with a note (see [Cell-level formatting]) |
 | `post_jupytext_sync`, `jupytext_args` | `hooks: [[jupytext, --sync, ...args, '{path}']]`. `export-config` keeps black/isort pipes as they are and prints the ruff equivalent as a suggestion. |
 | `pandoc_path` | removed (pandoc is bundled) |
+| `-raw_attribute` in `input_format` | kept in `pandoc.from` by `export-config`, but move it to `pandoc.to` (see [Recommended defaults for `markdown`]): in `from` it lets the guard accept rewriting a raw block as code. |
 | `processes`, `mode` | `-j` |
 | `toml_path`, `save*` | `--config`, `panblack init` |
 
