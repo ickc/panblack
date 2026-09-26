@@ -9,13 +9,15 @@ description:
   pandoc is pinned to one exact version on purpose: formatter output
   depends on the pandoc version, so each panblack release bundles one.
 homepage:           https://github.com/ickc/panblack
-license:            BSD-3-Clause
-license-file:       LICENSE
+license:            GPL-2.0-or-later
+license-file:       COPYING.md
+copyright:          (c) 2021-2026 Kolen Cheung
 author:             Kolen Cheung
 maintainer:         christian.kolen@gmail.com
 category:           Text
 build-type:         Simple
 tested-with:        GHC ==9.12.2
+extra-doc-files:    COPYRIGHT
 
 common warnings
   ghc-options:      -Wall -Wcompat -Wincomplete-uni-patterns -Wincomplete-record-updates

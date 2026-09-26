@@ -354,7 +354,7 @@ Two rounds are not always enough with widths kept: some documents take 3 or 5. W
 
 # Config
 
-The file is `.panblack.yaml` (the name is still open). It holds a list of profiles, like the 0.x array of tables.
+The file is `.panblack.yaml`. It holds a list of profiles, like the 0.x array of tables.
 
 ```yaml
 - paths: [pages, README.md]
@@ -615,7 +615,7 @@ Things to know:
 
 # Licence
 
-pandoc is GPL-2.0-or-later, and every panblack binary bundles it, so distributed binaries are covered by the GPL whatever licence panblack's own source uses. 0.x is BSD-3. BSD-3 source is GPL-compatible, so keeping it is possible, but GPL-2.0-or-later (as pandoc-crossref does) avoids the split and lets the repository include pandoc-derived material. Changing it is the author's decision; 0.x has a single author.
+GPL-2.0-or-later, as pandoc, laid out as pandoc does: `COPYRIGHT` holds the notice and the exceptions, `COPYING.md` the licence text (the cabal package in `haskell/` links to both). pandoc is GPL-2.0-or-later and every panblack binary bundles it, so distributed binaries were covered by the GPL anyway; with the source under the same licence there is no split, and the repository can include pandoc-derived material. 0.x keeps BSD-3: its releases, `v0.2.0` the last, are tagged on the `0.x` branch, and the move to the GPL comes with the rewrite. The exception is `haskell/wasm/patches`, MIT, copied from pandoc.
 
 Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.10.2`), not copied into the repository. That keeps them in step with the pinned version whatever the licence.
 
@@ -633,5 +633,5 @@ Nothing here blocks prototyping. Each question has a provisional choice that the
 | ipynb: partial formatting and the whole-notebook check (see [Cell-level formatting]). Three things to revisit: a notebook paired with a markdown file that nothing renders as one document (e.g. kept only for diffs) is still rejected for footnotes numbered across cells, which may call for `ipynb.whole-notebook-check: never`; without the check, a cell holding only a link reference definition becomes empty, which is faithful per cell but deletes what the author wrote, so it might be rejected instead; and a partly reformatted file exits 2 on every run until its kept cells are fixed by hand | per cell, keep rejected cells; whole-notebook check only when paired with markdown | usage |
 | ipynb: cell-level or whole-notebook round trip | settled: cell-level (see [Cell-level formatting]) | step 3, done |
 | Hooks or pre-commit only | hooks | usage |
-| Licence: GPL-2.0-or-later (like pandoc and pandoc-crossref) or keep BSD-3 | GPL-2.0-or-later; see [Licence] | before the repo is public |
-| Config filename and discovery | `.panblack.yaml`, walk up to the repo root | before freeze |
+| Licence: GPL-2.0-or-later (like pandoc and pandoc-crossref) or keep BSD-3 | settled: GPL-2.0-or-later; see [Licence] | author, done |
+| Config filename and discovery | settled: `.panblack.yaml`, walk up to the repo root | author, done |

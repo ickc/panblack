@@ -6,7 +6,7 @@ build-backend = "poetry.core.masonry.api"
 name = "panblack"
 version = "0.2.0"
 description = "panblack---black-like formatter for pandoc users"
-license = "BSD-3-Clause"
+license = "GPL-2.0-or-later"
 keywords = [
     "pandoc",
     "markdown",
@@ -17,7 +17,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Build Tools",
-    "License :: OSI Approved :: BSD License",
+    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
     "Operating System :: Unix",
     "Operating System :: POSIX",
     "Operating System :: Microsoft :: Windows",
@@ -37,7 +37,8 @@ packages = [
     { include = "panblack", from = "src" },
 ]
 include = [
-    'LICENSE',
+    'COPYING.md',
+    'COPYRIGHT',
     'README.rst',
     'src/panblack/templates/template.md',
 ]
