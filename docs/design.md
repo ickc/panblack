@@ -361,7 +361,7 @@ The file is `.panblack.yaml` (the name is still open). It holds a list of profil
   exts: [md]
   excludes: []
   check: [source, html]    # all must pass; default [source] (see Terminology)
-  normalize: [table-widths, table-cell-breaks]   # default none (see Normalizations)
+  normalize: [table-widths, table-cell-breaks]   # default all (see Normalizations)
   pandoc:                  # inline pandoc defaults file (alternatively: defaults: path/to/file.yaml)
     from: markdown-raw_attribute-latex_macros-simple_tables-multiline_tables+east_asian_line_breaks+autolink_bare_uris
     wrap: preserve
@@ -489,6 +489,7 @@ panblack [PATH...]          # format in place using .panblack.yaml profiles
   --diff                    # print a unified diff, write nothing
   --config FILE
   -j N                      # default: number of CPUs
+  --no-cache                # format every file; neither read nor update the cache
   -v                        # list unchanged files; show the check renders that differ
 panblack - [--stdin-filename PATH]   # stdin to stdout
 panblack init               # print a starter .panblack.yaml
@@ -501,6 +502,18 @@ Exit codes: 0 means OK. 1 means `--check` found changes. 2 means a failed check 
 - `PATH...` selects among the files the profiles cover: those files at or below the given paths. A named file that no profile covers is skipped with a note, so a pre-commit hook can pass every changed file.
 - Reports go to stderr, one line per file (`reformatted`, `would reformat`, `partly reformatted` for notebooks, `rejected`, `error`) and a summary; diffs go to stdout.
 - With `-`, the profile is the only one, or the one covering `--stdin-filename`. The formatted source is written to stdout. If it is rejected, the input is written back unchanged (exit 2), so a pipe never loses the document.
+
+## Cache
+
+As black does, panblack skips files it has already accepted. Implementation: `Panblack.Cache`.
+
+- Each profile has a cache file, `$XDG_CACHE_HOME/panblack/KEY.json`, mapping each file's absolute path to the SHA-256 of its content. `KEY` is a digest of everything else the result depends on: the panblack and pandoc versions, the config directory, and the profile with its resolved pandoc settings (so the contents of a `defaults:` or `abbreviations` file count too). Changing any of them starts a new cache.
+- A file whose content has its recorded digest is reported `unchanged`, without being read by pandoc or running its hooks.
+- A file is recorded only when running panblack on it again would change nothing and report nothing: it was accepted (unchanged or reformatted), not partly reformatted, with no warning and no failed hook, and the hooks left it as panblack wrote it. A hook that changes the file (jupytext `--update` can) means it is checked once more on the next run, and recorded then. Rejected files are never recorded, so they are reported on every run.
+- `--check` and `--diff` read the cache. They record only files that are unchanged and have no hooks, since they don't run hooks.
+- Not covered: the versions of the tools that hooks run (as with black and its plugins), and the other side of a jupytext pair. After upgrading ruff, say, use `--no-cache` once. Stdin is never cached.
+- Reading or writing the cache never fails a run: an unreadable cache is empty, and the file is replaced atomically. Concurrent runs may lose each other's new entries, which only costs a recheck.
+- Measured: 20 copies of this doc with the `panblack init` settings take 2.2 s at `-j1` and 0.00 s cached; the same with a hook that takes 0.2 s, 1.8 s at `-j4` and 0.00 s cached. pandoc's 1090 small `test/command` files take 0.14 s either way, so there the cache doesn't matter.
 
 # Versioning
 
@@ -549,7 +562,7 @@ Expect a one-time reformat commit per project, because the pandoc version change
     - Golden tests: **done**, `haskell/golden/run.sh`. The corpus is pandoc's own markdown, fetched with `cabal get` for the pinned version: `MANUAL.txt`, the top-level `.md` files, the markdown reader tests and the 1090 `test/command/*.md` files, 1102 files in all. 0.x and 1.0 (`normalize: []`) format separate copies under three settings: the defaults; the defaults with `html`; and `wrap: preserve`, `columns: 120`, `reference-location: block` with `html`. Every file comes out byte-identical, except that 0.x drops the final newline. The accept/reject decisions agree too, although 1.0 renders checks differently (see [What a check renders]). The golden run found two differences, both fixed: the pandoc CLI expands tabs before reading, and it takes `smart`'s abbreviations from a data file.
 3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [ipynb] and [External hooks]). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that the pair workflow needs `jupytext --update` rather than `--sync`, and no jupytext YAML header.
 4. Settle the open questions, then freeze the config schema.
-    - A cache, as black has: skip files whose content, panblack version and profile are unchanged since they were last accepted, and don't run their hooks. Runs are already fast (0.06 s for one notebook, 0.5 s for 137, of which about 0.04 s is start-up), so a daemon wouldn't buy much; the cost worth saving is re-running hooks such as jupytext and ruff on files that haven't changed. Watching files is left to tools such as `watchexec`.
+    - A cache, as black has: **done** (see [Cache]). Runs are already fast (0.06 s for one notebook, 0.5 s for 137, of which about 0.04 s is start-up), so a daemon wouldn't buy much; the cost worth saving is re-running hooks such as jupytext and ruff, and large documents, on files that haven't changed. Watching files is left to tools such as `watchexec`.
 5. Python `v0.2.0` tag: `export-config` and the deprecation notice.
 6. panblack 1.0: Hackage (see [Publishing]), feedstock packaging, binaries, pre-commit hook. Migrate the dependent projects.
 7. The wasm build and the editor integration.

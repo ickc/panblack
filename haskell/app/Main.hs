@@ -12,13 +12,14 @@ import Data.ByteString qualified as B
 import Data.List (intercalate)
 import Data.Map.Strict qualified as M
 import Data.Set qualified as S
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Version (showVersion)
 import GHC.Conc (getNumProcessors)
+import Panblack.Cache
 import Panblack.Config
 import Panblack.Diff (unifiedDiff)
 import Panblack.Discover
@@ -37,6 +38,7 @@ import System.IO qualified as IO
 import System.IO.Error (isDoesNotExistError)
 import Text.Pandoc.App (LineEnding (..))
 import Text.Pandoc.Error (renderError)
+import Text.Pandoc.Options (WriterOptions (..))
 import Text.Pandoc.Version (pandocVersionText)
 
 data Opts = Opts
@@ -45,13 +47,14 @@ data Opts = Opts
   , optConfig :: Maybe FilePath
   , optJobs :: Maybe Int
   , optVerbose :: Bool
+  , optNoCache :: Bool
   , optStdinFilename :: Maybe FilePath
   , optVersion :: Bool
   , optHelp :: Bool
   }
 
 defaultOpts' :: Opts
-defaultOpts' = Opts False False Nothing Nothing False Nothing False False
+defaultOpts' = Opts False False Nothing Nothing False False Nothing False False
 
 options :: [OptDescr (Opts -> Either String Opts)]
 options =
@@ -60,6 +63,7 @@ options =
   , Option "" ["config"] (ReqArg (\s o -> Right o {optConfig = Just s}) "FILE") "config file (default: .panblack.yaml, searched upwards to the repository root)"
   , Option "j" ["jobs"] (ReqArg (\s o -> (\n -> o {optJobs = Just n}) <$> positive s) "N") "files formatted in parallel (default: number of CPUs)"
   , Option "" ["stdin-filename"] (ReqArg (\s o -> Right o {optStdinFilename = Just s}) "PATH") "with -, choose the profile as if formatting PATH"
+  , Option "" ["no-cache"] (NoArg (\o -> Right o {optNoCache = True})) "format every file, ignoring and not updating the cache of accepted files"
   , Option "v" ["verbose"] (NoArg (\o -> Right o {optVerbose = True})) "report unchanged files, and show why a file was rejected"
   , Option "" ["version"] (NoArg (\o -> Right o {optVersion = True})) "print the version and the bundled pandoc version"
   , Option "h" ["help"] (NoArg (\o -> Right o {optHelp = True})) "print this help"
@@ -99,6 +103,8 @@ data Loaded = Loaded
   , lCellProfile :: Profile
   -- ^ For notebook cells.
   , lEol :: LineEnding
+  , lCacheKey :: Text
+  -- ^ Covers everything but a file's content (see "Panblack.Cache").
   }
 
 data Outcome
@@ -116,6 +122,7 @@ data Result = Result
   { rOutcome :: Outcome
   , rWarnings :: [String]
   , rHookError :: Maybe Text
+  , rCache :: Entry
   }
 
 main :: IO ()
@@ -160,7 +167,9 @@ run paths opts
             cf = pcCellFormat pc
         profile <- build settings
         cellProfile <- build settings {setFrom = cf, setTo = cf}
-        pure (Loaded name root pc excludes profile cellProfile (setEol settings))
+        -- Not the writer's syntax map: it's large, and fixed by the pandoc version.
+        let key = cacheKey (show (showVersion version, pandocVersionText, root, pc {pcPaths = []}, settings {setWriter = (setWriter settings) {writerSyntaxMap = mempty}}))
+        pure (Loaded name root pc excludes profile cellProfile (setEol settings) key)
       jobs <- maybe getNumProcessors pure (optJobs opts)
       setNumCapabilities jobs
       if stdinMode
@@ -205,7 +214,12 @@ formatFiles opts cwd only loaded jobs = do
             | otherwise -> pure ()
         pure [(f, l) | (f, l) <- files, any (f `isUnder`) onlyAbs]
   let covered = M.keysSet byFile
-  results <- parMapIO jobs (\(f, l) -> (f,) <$> formatFile opts cwd covered l f) selected
+      keys = S.toList (S.fromList (map lCacheKey loaded))
+  caches <- M.fromList <$> forM keys (\k -> (k,) <$> if optNoCache opts then pure noCache else loadCache k)
+  let cacheOf l = M.findWithDefault noCache (lCacheKey l) caches
+  results <- parMapIO jobs (\(f, l) -> (f,) <$> formatFile opts cwd covered (cacheOf l) l f) selected
+  forM_ keys $ \k ->
+    saveCache (M.findWithDefault noCache k caches) [(f, rCache r) | ((f, l), (_, r)) <- zip selected results, lCacheKey l == k]
   codes <- forM results $ \(f, r) -> do
     let shown = relativeTo cwd f
         outcome = rOutcome r
@@ -222,12 +236,13 @@ formatFiles opts cwd only loaded jobs = do
 -- | Format a file in place, then run the profile's hooks if it was
 -- accepted. The covered files are those of every profile, to warn when
 -- both sides of a jupytext pair are formatted.
-formatFile :: Opts -> FilePath -> S.Set FilePath -> Loaded -> FilePath -> IO Result
-formatFile opts cwd covered l f = do
+formatFile :: Opts -> FilePath -> S.Set FilePath -> Cache -> Loaded -> FilePath -> IO Result
+formatFile opts cwd covered cache l f = do
   r <- try $ do
     bytes <- B.readFile f
     case TE.decodeUtf8' bytes of
-      Left _ -> pure (Result (Failed "not valid UTF-8") [] Nothing)
+      _ | isCached cache f bytes -> pure (Result Unchanged [] Nothing Keep)
+      Left _ -> pure (Result (Failed "not valid UTF-8") [] Nothing Forget)
       Right raw -> do
         (outcome, warnings) <-
           if isNotebook f
@@ -245,8 +260,10 @@ formatFile opts cwd covered l f = do
                 )
             else (,[]) <$> formatSource l raw
         let dry = optCheck opts || optDiff opts
+            hooks = pcHooks (lConfig l)
+            final = maybe bytes (TE.encodeUtf8 . snd) (rewritten outcome)
         case rewritten outcome of
-          Just (_, out) | not dry -> B.writeFile f (TE.encodeUtf8 out)
+          Just _ | not dry -> B.writeFile f final
           _ -> pure ()
         -- As 0.x ran jupytext after every accepted file, changed or not.
         hookError <- case outcome of
@@ -255,8 +272,24 @@ formatFile opts cwd covered l f = do
           Changed {} -> runHooks l f
           PartlyChanged {} -> runHooks l f
           _ -> pure Nothing
-        pure (Result outcome warnings hookError)
-  pure $ either (\e -> Result (Failed (T.pack (displayException (e :: SomeException)))) [] Nothing) id r
+        -- Record the file only if running panblack and its hooks again
+        -- would change nothing and report nothing. Hooks that change the
+        -- file (jupytext --update can) must see it once more first.
+        entry <- case outcome of
+          _ | not (null warnings) || isJust hookError -> pure Forget
+          Unchanged | dry -> pure (if null hooks then Record (digest final) else Forget)
+          _ | dry -> pure Forget
+          Unchanged -> recordIfSame hooks final
+          Changed {} -> recordIfSame hooks final
+          _ -> pure Forget
+        pure (Result outcome warnings hookError entry)
+  pure $ either (\e -> Result (Failed (T.pack (displayException (e :: SomeException)))) [] Nothing Forget) id r
+ where
+  recordIfSame hooks final
+    | null hooks = pure (Record (digest final))
+    | otherwise = do
+        after <- B.readFile f
+        pure (if after == final then Record (digest final) else Forget)
 
 -- | The original and the text to write, if there is one.
 rewritten :: Outcome -> Maybe (Text, Text)

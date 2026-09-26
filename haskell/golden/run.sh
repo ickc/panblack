@@ -34,7 +34,7 @@ for s in "${settings[@]}"; do
   rm -rf "$name" && mkdir -p "$name" && cp -r corpus "$name/old" && cp -r corpus "$name/new"
   (cd "$name/old" && "$ORACLE" --paths . -r $checks0 --pandoc-args "$args" -t none.toml --no-post-jupytext-sync >../old.log 2>&1 || true)
   printf -- '- paths: [.]\n  check: %s\n  normalize: []\n  pandoc: %s\n' "$checks1" "$pandoc1" > "$name/new/.panblack.yaml"
-  (cd "$name/new" && "$PB" >../new.log 2>&1 || true)
+  (cd "$name/new" && "$PB" --no-cache >../new.log 2>&1 || true)
   python3 - "$name" <<'PY'
 import sys, pathlib, collections
 name = sys.argv[1]; d = pathlib.Path(name)

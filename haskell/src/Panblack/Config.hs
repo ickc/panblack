@@ -162,6 +162,7 @@ data Settings = Settings
   , setWriter :: WriterOptions
   , setEol :: LineEnding
   }
+  deriving stock (Show)
 
 -- | Resolve a profile's pandoc options: read its defaults file, if any, and
 -- the abbreviations file, if any, both relative to the config directory.

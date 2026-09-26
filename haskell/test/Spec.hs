@@ -8,6 +8,7 @@ import Data.Either (isLeft)
 import Data.IORef
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Panblack.Cache
 import Panblack.Config
 import Panblack.Diff (unifiedDiff)
 import Panblack.Discover (compileExclude, excluded, relativeTo)
@@ -17,7 +18,10 @@ import Panblack.Notebook
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize
 import Panblack.Target.Html (htmlCheck)
+import System.Directory (getTemporaryDirectory)
+import System.Environment (setEnv)
 import System.Exit (exitFailure)
+import System.FilePath ((</>))
 import Text.Pandoc.Options (WrapOption (..), WriterOptions (..), def)
 import Text.Pandoc.Readers.Markdown (readMarkdown)
 import Text.Pandoc.Writers.Markdown (writeMarkdown)
@@ -167,6 +171,20 @@ main = do
   check "pairs: with markdown" $
     pairedWithMarkdown (withFormats "ipynb,md") && pairedWithMarkdown (withFormats "notebooks///ipynb,md///md:myst")
       && not (pairedWithMarkdown (withFormats "ipynb,py:percent")) && not (pairedWithMarkdown KM.empty)
+
+  tmp <- getTemporaryDirectory
+  setEnv "XDG_CACHE_HOME" (tmp </> "panblack-spec-cache")
+  let key = cacheKey "spec"
+  c0 <- loadCache key
+  saveCache c0 [("/a.md", Record (digest "a")), ("/b.md", Record (digest "b"))]
+  c1 <- loadCache key
+  check "cache: recorded digests hit" $ isCached c1 "/a.md" "a" && isCached c1 "/b.md" "b"
+  check "cache: other content misses" $ not (isCached c1 "/a.md" "a2") && not (isCached c1 "/c.md" "c")
+  saveCache c1 [("/a.md", Forget), ("/b.md", Keep)]
+  c2 <- loadCache key
+  check "cache: forget and keep" $ not (isCached c2 "/a.md" "a") && isCached c2 "/b.md" "b"
+  check "cache: off" $ not (isCached noCache "/b.md" "b")
+  saveCache c2 [("/b.md", Forget)]
 
   n <- readIORef failures
   if n == 0 then putStrLn "all passed" else exitFailure
