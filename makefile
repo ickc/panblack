@@ -78,7 +78,7 @@ dist/docs/:
 # Deploy to PyPI
 ## by CI, properly git tagged
 pypi:
-	git push origin v0.1.0
+	git push origin v0.2.0
 ## Manually
 pypiManual:
 	rm -rf dist
@@ -103,9 +103,9 @@ print-%:
 
 setup.py:
 	poetry build
-	cd dist; tar -xf panblack-0.1.0.tar.gz panblack-0.1.0/setup.py
-	mv dist/panblack-0.1.0/setup.py .
-	rm -rf dist/panblack-0.1.0
+	cd dist; tar -xf panblack-0.2.0.tar.gz panblack-0.2.0/setup.py
+	mv dist/panblack-0.2.0/setup.py .
+	rm -rf dist/panblack-0.2.0
 
 # since poetry doesn't support editable, we can build and extract the setup.py,
 # temporary remove pyproject.toml and ask pip to install from setup.py instead.

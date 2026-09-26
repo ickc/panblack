@@ -10,6 +10,18 @@ include: badges.csv
 ...
 ```
 
+# Deprecated: migrating to 1.0
+
+panblack 0.x is deprecated; panblack 1.0 replaces it.
+`v0.2.0` is the last 0.x release.
+It adds `panblack export-config`,
+which writes 1.0's `.panblack.yaml` from the `tool.panblack` config in `pyproject.toml`:
+
+```bash
+uv tool install git+https://github.com/ickc/panblack@v0.2.0
+panblack export-config    # in the directory you run panblack from
+```
+
 # Introduction
 
 Kind of like black, an opinionated formatter powered by pandoc including formats like markdown, ipynb, etc.

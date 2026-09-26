@@ -26,6 +26,16 @@ panblack—black-like formatter for pandoc users.
 | conda-forge | |Conda Recipe| |Conda Downloads| |Conda Version| |Conda Platforms|               |
 +-------------+----------------------------------------------------------------------------------+
 
+Deprecated: migrating to 1.0
+============================
+
+panblack 0.x is deprecated; panblack 1.0 replaces it. ``v0.2.0`` is the last 0.x release. It adds ``panblack export-config``, which writes 1.0’s ``.panblack.yaml`` from the ``tool.panblack`` config in ``pyproject.toml``:
+
+.. code:: bash
+
+   uv tool install git+https://github.com/ickc/panblack@v0.2.0
+   panblack export-config    # in the directory you run panblack from
+
 Introduction
 ============
 
