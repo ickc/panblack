@@ -390,7 +390,8 @@ The file is `.panblack.yaml`. It holds a list of profiles, like the 0.x array of
 - A file matched by two profiles is an error (0.x formatted it twice, concurrently).
 - Without a config file, `panblack PATH...` uses one profile with those defaults on the given paths.
 - A file is a notebook if its extension is `.ipynb`. Its cells are read and written in `ipynb.cell-format`, not `pandoc.from`/`to`; the other `pandoc:` keys apply as usual. So one profile can cover notebooks and markdown files alike.
-- `excludes`: gitignore-style globs, matched while walking a listed directory. A trailing `/` matches directories only, a pattern with another `/` is anchored at the config directory, and any other pattern matches a name at any depth. A file listed in `paths` is always included, as in 0.x. `.gitignore` is not read yet (see [Open questions]).
+- In a git repository, git decides which files a listed directory has: `git ls-files --cached --others --exclude-standard`, i.e. tracked files and the untracked ones git doesn't ignore, by `.gitignore` files at any level, `.git/info/exclude` and the global excludes file. A tracked file is included even if a `.gitignore` matches it, as for git. `--stdin-filename` asks `git check-ignore`. Without git, or outside a repository, the directory is walked and only `excludes` apply. Running git costs no library and about 40 lines, and gives git's own rules rather than a reimplementation.
+- `excludes`: gitignore-style globs, applied on top of git's list, or while walking. A trailing `/` matches directories only, a pattern with another `/` is anchored at the config directory, and any other pattern matches a name at any depth. A file listed in `paths` is always included, as in 0.x.
 - `panblack init` prints the recommended defaults for markdown.
 
 # ipynb
@@ -509,7 +510,7 @@ As black does, panblack skips files it has already accepted. Implementation: `Pa
 
 - Each profile has a cache file, `$XDG_CACHE_HOME/panblack/KEY.json`, mapping each file's absolute path to the SHA-256 of its content. `KEY` is a digest of everything else the result depends on: the panblack and pandoc versions, the config directory, and the profile with its resolved pandoc settings (so the contents of a `defaults:` or `abbreviations` file count too). Changing any of them starts a new cache.
 - A file whose content has its recorded digest is reported `unchanged`, without being read by pandoc or running its hooks.
-- A file is recorded only when running panblack on it again would change nothing and report nothing: it was accepted (unchanged or reformatted), not partly reformatted, with no warning and no failed hook, and the hooks left it as panblack wrote it. A hook that changes the file (jupytext `--update` can) means it is checked once more on the next run, and recorded then. Rejected files are never recorded, so they are reported on every run.
+- A file is recorded only when running panblack on it again would change nothing and report nothing: it was accepted (unchanged or reformatted), not partly reformatted, with no warning and no failed hook, and the hooks left it as panblack wrote it. A hook that changes the file (jupytext with ruff `--pipe`s does, for code cells) means it is checked once more on the next run, and recorded then. Rejected files are never recorded, so they are reported on every run.
 - `--check` and `--diff` read the cache. They record only files that are unchanged and have no hooks, since they don't run hooks.
 - Not covered: the versions of the tools that hooks run (as with black and its plugins), and the other side of a jupytext pair. After upgrading ruff, say, use `--no-cache` once. Stdin is never cached.
 - Reading or writing the cache never fails a run: an unreadable cache is empty, and the file is replaced atomically. Concurrent runs may lose each other's new entries, which only costs a recheck.
@@ -542,7 +543,7 @@ panblack 0.x was never published to PyPI or conda-forge; users install it from t
 | `require_idempotence_format` | `check`, same meaning. The `"input_format"` entry becomes `source`. |
 | (none: 0.x has no normalizations) | `export-config` writes `normalize: []`, so the output stays as 0.x's. Remove it to get the default normalizations. |
 | `paths`, `exts` | unchanged |
-| `excludes` (regex) | `excludes` (see [Open questions]) |
+| `excludes` (regex) | `excludes`, as globs (see [Config]). In a git repository, files git ignores are now skipped too. |
 | `pandoc_args` | `pandoc:` keys, e.g. `--wrap=preserve` → `wrap: preserve`. `--sandbox` is dropped (always on). Unknown args cause an error with a pointer to the docs. |
 | `del_jupytext_encoding` | removed: `export-config` ignores it with a note (see [Cell-level formatting]) |
 | `post_jupytext_sync`, `jupytext_args` | `hooks: [[jupytext, --sync, ...args, '{path}']]`. `export-config` keeps black/isort pipes as they are and prints the ruff equivalent as a suggestion. |
@@ -560,7 +561,7 @@ Expect a one-time reformat commit per project, because the pandoc version change
 2. Core and CLI for markdown: guard, config, `--check`/`--diff`. Golden tests against the 0.x oracle on real corpora, with both using the same pandoc version.
     - CLI, config and normalizations: **done**. With no normalizations, the output is byte-identical to the pandoc CLI (what 0.x runs) for every formatter option on four documents (pandoc's `testsuite.txt`, `markdown-reader-more.txt` and `MANUAL.txt`, and this doc), for `markdown`, `gfm` and `commonmark_x`. With all of them on, it is byte-identical to pandoc with the Lua prototype on the 24-document corpus.
     - Golden tests: **done**, `haskell/golden/run.sh`. The corpus is pandoc's own markdown, fetched with `cabal get` for the pinned version: `MANUAL.txt`, the top-level `.md` files, the markdown reader tests and the 1090 `test/command/*.md` files, 1102 files in all. 0.x and 1.0 (`normalize: []`) format separate copies under three settings: the defaults; the defaults with `html`; and `wrap: preserve`, `columns: 120`, `reference-location: block` with `html`. Every file comes out byte-identical, except that 0.x drops the final newline. The accept/reject decisions agree too, although 1.0 renders checks differently (see [What a check renders]). The golden run found two differences, both fixed: the pandoc CLI expands tabs before reading, and it takes `smart`'s abbreviations from a data file.
-3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [ipynb] and [External hooks]). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that the pair workflow needs `jupytext --update` rather than `--sync`, and no jupytext YAML header.
+3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [ipynb] and [External hooks]). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that formatting the text side of a pair needs `jupytext --update` rather than `--sync`, and no jupytext YAML header (see [Alternative: format the text side]).
 4. Settle the open questions, then freeze the config schema.
     - A cache, as black has: **done** (see [Cache]). Runs are already fast (0.06 s for one notebook, 0.5 s for 137, of which about 0.04 s is start-up), so a daemon wouldn't buy much; the cost worth saving is re-running hooks such as jupytext and ruff, and large documents, on files that haven't changed. Watching files is left to tools such as `watchexec`.
 5. Python `v0.2.0` tag: `export-config` and the deprecation notice.
@@ -629,9 +630,9 @@ Nothing here blocks prototyping. Each question has a provisional choice that the
 | Default table settings | `from`/`to: markdown-simple_tables-multiline_tables`, `wrap: preserve`, widths reset (see [Recommended defaults for `markdown`]) | step 2 corpora |
 | Normalizations: option names, defaults, how to turn them off | a `normalize:` list, all on by default, `[]` for none; see [Normalizations] | before freeze |
 | wasm tiers | settled: one tier, `md+html` | spike (step 1), done |
-| `excludes` regex or globs | gitignore-style globs (done); whether to read `.gitignore` is still open | usage on real repos |
+| `excludes` regex or globs, and `.gitignore` | settled: gitignore-style globs, on top of git's own list of files (see [Config]) | author, done |
 | ipynb: partial formatting and the whole-notebook check (see [Cell-level formatting]). Three things to revisit: a notebook paired with a markdown file that nothing renders as one document (e.g. kept only for diffs) is still rejected for footnotes numbered across cells, which may call for `ipynb.whole-notebook-check: never`; without the check, a cell holding only a link reference definition becomes empty, which is faithful per cell but deletes what the author wrote, so it might be rejected instead; and a partly reformatted file exits 2 on every run until its kept cells are fixed by hand | per cell, keep rejected cells; whole-notebook check only when paired with markdown | usage |
 | ipynb: cell-level or whole-notebook round trip | settled: cell-level (see [Cell-level formatting]) | step 3, done |
-| Hooks or pre-commit only | hooks | usage |
+| Hooks or pre-commit only | settled: hooks (see [External hooks]); pre-commit can still chain the tools instead | author, done |
 | Licence: GPL-2.0-or-later (like pandoc and pandoc-crossref) or keep BSD-3 | settled: GPL-2.0-or-later; see [Licence] | author, done |
 | Config filename and discovery | settled: `.panblack.yaml`, walk up to the repo root | author, done |

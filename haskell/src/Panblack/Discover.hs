@@ -5,10 +5,14 @@
 -- the files below it with one of the profile's extensions, except those
 -- matching an exclude.
 --
--- Excludes are gitignore-style globs (see docs/design.md, "Open questions"):
--- a trailing @/@ matches directories only; a pattern with any other @/@ is
+-- Excludes are gitignore-style globs (see docs/design.md, "Config"): a
+-- trailing @/@ matches directories only; a pattern with any other @/@ is
 -- anchored at the root; any other pattern matches a name at any depth.
--- @.gitignore@ files are not read yet.
+--
+-- In a git repository, git decides which files a directory has: tracked
+-- files and untracked ones that aren't ignored (@.gitignore@,
+-- @.git/info/exclude@, the global excludes file). The excludes then apply on
+-- top. Without git, or outside a repository, the directory is walked.
 module Panblack.Discover
   ( Exclude
   , compileExclude
@@ -19,13 +23,18 @@ module Panblack.Discover
   , relativeTo
   ) where
 
+import Control.Exception (IOException, try)
 import Control.Monad (filterM, forM)
+import Data.ByteString qualified as B
 import Data.List (isPrefixOf, sort)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import System.Directory (canonicalizePath, doesDirectoryExist, doesFileExist, listDirectory, pathIsSymbolicLink)
-import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeExtension, (</>))
+import System.Exit (ExitCode (..))
+import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, (</>))
 import System.FilePath.Glob (Pattern, compDefault, match, tryCompileWith)
+import System.Process (CreateProcess (..), StdStream (..), proc, waitForProcess, withCreateProcess)
 
 data Exclude = Exclude
   { exDirOnly :: Bool
@@ -67,8 +76,12 @@ discover root paths exts exs = fmap concat . sequence <$> mapM one paths
     isDir <- doesDirectoryExist full
     if
       | isFile -> pure (Right [full])
-      | isDir -> Right <$> walk full
+      | isDir -> Right <$> (gitFiles full >>= maybe (walk full) (filterM keep))
       | otherwise -> pure (Left (full <> ": no such file or directory"))
+  -- git lists deleted files that are still in the index, and submodules.
+  keep f
+    | hasExt exts f && not (excludedOnTheWay exs (relParts f)) = doesFileExist f
+    | otherwise = pure False
   walk dir = do
     entries <- map (dir </>) . sort <$> listDirectory dir
     fmap concat . forM entries $ \e -> do
@@ -93,12 +106,44 @@ matches root paths exts exs file = do
     | not (hasExt exts file) -> pure False
     | otherwise -> do
         dirs <- filterM doesDirectoryExist [p | p <- fulls, file `isUnder` p]
-        pure $ not (null dirs) && not (excludedOnTheWay (splitDirectories (makeRelative root file)))
+        if null dirs || excludedOnTheWay exs (splitDirectories (makeRelative root file))
+          then pure False
+          else not <$> gitIgnored file
+
+-- | Whether any directory on the way to a file, or the file itself, is
+-- excluded.
+excludedOnTheWay :: [Exclude] -> [FilePath] -> Bool
+excludedOnTheWay exs parts =
+  or [excluded exs True (take n parts) | n <- [1 .. length parts - 1]]
+    || excluded exs False parts
+
+-- | The files git lists below a directory: tracked, or untracked and not
+-- ignored. Nothing if git is missing or the directory isn't in a
+-- repository.
+gitFiles :: FilePath -> IO (Maybe [FilePath])
+gitFiles dir = do
+  r <- git ["-C", dir, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
+  pure $ case r of
+    Just (ExitSuccess, out) -> Just (sort [dir </> T.unpack (TE.decodeUtf8Lenient p) | p <- B.split 0 out, not (B.null p)])
+    _ -> Nothing
+
+-- | Whether git ignores a file (never when it's tracked). False if git is
+-- missing or the file isn't in a repository.
+gitIgnored :: FilePath -> IO Bool
+gitIgnored file = do
+  r <- git ["-C", takeDirectory file, "check-ignore", "-q", "--", file]
+  pure $ case r of
+    Just (ExitSuccess, _) -> True
+    _ -> False
+
+-- | Run git, returning its exit code and stdout; Nothing if it can't run.
+git :: [String] -> IO (Maybe (ExitCode, B.ByteString))
+git args = either (\(_ :: IOException) -> Nothing) Just <$> try run
  where
-  -- Every directory on the way to the file, then the file itself.
-  excludedOnTheWay parts =
-    or [excluded exs True (take n parts) | n <- [1 .. length parts - 1]]
-      || excluded exs False parts
+  run = withCreateProcess (proc "git" args) {std_in = NoStream, std_out = CreatePipe, std_err = CreatePipe} $ \_ out err p -> do
+    bytes <- maybe (pure B.empty) B.hGetContents out
+    _ <- maybe (pure B.empty) B.hGetContents err
+    (,bytes) <$> waitForProcess p
 
 -- | Whether a path is the given directory or below it (both canonical).
 isUnder :: FilePath -> FilePath -> Bool
