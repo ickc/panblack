@@ -32,12 +32,12 @@ jobs:
         pip install -U pip
         pip install -e .[extras,tests]
     - name: Install dependencies—pandoc
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
-        # pandoc
-        [[ ${{ matrix.pandoc-version }} == "latest" ]] && url="https://github.com/jgm/pandoc/releases/latest" || url="https://github.com/jgm/pandoc/releases/tag/${{ matrix.pandoc-version }}"
-        downloadUrl="https://github.com$(curl -L $url | grep -o '/jgm/pandoc/releases/download/.*-amd64\.deb')"
-        wget --quiet "$downloadUrl"
-        sudo dpkg -i "${downloadUrl##*/}"
+        [[ ${{ matrix.pandoc-version }} == "latest" ]] && tag= || tag=${{ matrix.pandoc-version }}
+        gh release download $tag -R jgm/pandoc -p '*-amd64.deb'
+        sudo dpkg -i pandoc-*-amd64.deb
     - name: Sanity check
       run: |
         pip check
