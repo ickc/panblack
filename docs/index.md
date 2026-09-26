@@ -73,6 +73,6 @@ cabal test all
 The docs are a Quarto site in `docs/`, with Quarto from pixi:
 
 ```bash
-pixi run serve    # preview on port 8008
+pixi run serve    # preview on port 21576
 pixi run build    # render to docs/_site
 ```

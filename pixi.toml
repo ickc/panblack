@@ -9,7 +9,7 @@ platforms = ["linux-64", "osx-arm64", "osx-64"]
 quarto = "*"
 
 [activation]
-env = { QUARTO_PORT = "8008" }
+env = { QUARTO_PORT = "21576" }
 
 [tasks]
 build = { cmd = "quarto render", cwd = "docs", description = "Render the Quarto website" }
