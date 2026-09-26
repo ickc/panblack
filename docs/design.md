@@ -196,7 +196,7 @@ Why, from runs on the corpus described in [Stability of the candidate defaults],
 | all | pipe only | `preserve` | 16/30 | 18/30 | 0 | 16/16 |
 | all | pipe only | `auto` | 18/30 | 20/30 | 1 | 18/18 |
 
-- **Eight html failures are common to every row.** They are writer losses unrelated to tables (see [Other writer losses]), so 22/30 is the most any table setting can reach here.
+- **Eight html failures are common to every row.** They are writer losses unrelated to tables (see the other writer losses in [Stability of the candidate defaults]), so 22/30 is the most any table setting can reach here.
 - **`wrap: auto`** can loop forever on the escape problem. A reflowed line starting with `71.` gets escaped, and the escape moves the break. It happened in this corpus at 72 and 100 columns, and one of the two alternating versions can even render different html. Any prose can hit it, which is exactly the "save and it keeps changing" case. `auto` also rewrites every paragraph of an existing file.
 - **Pipe tables only** lose every table that needs a grid table (block content, multi-line cells).
 

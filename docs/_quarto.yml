@@ -1,0 +1,26 @@
+project:
+  type: website
+  render:
+    - index.qmd
+    - design.md
+    - changelog.qmd
+
+website:
+  title: panblack
+  site-url: https://ickc.github.io/panblack/
+  repo-url: https://github.com/ickc/panblack
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: design.md
+        text: Design
+      - href: changelog.qmd
+        text: Changelog
+    right:
+      - icon: github
+        href: https://github.com/ickc/panblack
+
+format:
+  html:
+    toc: true
