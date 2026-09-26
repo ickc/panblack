@@ -35,7 +35,7 @@ class ExportError(Exception):
     pass
 
 
-def pandoc_options(args: List[str], is_ipynb: bool, notes: List[str]) -> Dict[str, object]:
+def pandoc_options(args: List[str], notes: List[str]) -> Dict[str, object]:
     """Translate 0.x's ``pandoc_args`` to the keys of a pandoc defaults file."""
     res: Dict[str, object] = {}
     it = iter(args)
@@ -47,7 +47,7 @@ def pandoc_options(args: List[str], is_ipynb: bool, notes: List[str]) -> Dict[st
             res["markdown-headings"] = "atx"
         elif name in PANDOC_FLAGS:
             res[name] = not eq or value == "true"
-        elif name in PANDOC_OPTIONS or (name == "ipynb-output" and is_ipynb):
+        elif name in PANDOC_OPTIONS or name == "ipynb-output":
             if not eq:
                 value = next(it, None)
                 if value is None:
@@ -112,7 +112,7 @@ def export_profile(options, notes: List[str]) -> Dict[str, object]:
         # 0.x had no normalizations
         "normalize": [],
     }
-    pandoc = pandoc_options(list(options.pandoc_args), options.is_ipynb, notes)
+    pandoc = pandoc_options(list(options.pandoc_args), notes)
     if options.pandoc_path is not None:
         notes.append("pandoc_path dropped: 1.0 bundles pandoc")
     if options.is_ipynb:
@@ -171,7 +171,7 @@ def write(text: str, output: Optional[Path]) -> None:
         print(text, end="")
     else:
         try:
-            with output.open("x") as f:
+            with output.open("x", encoding="utf-8") as f:
                 f.write(text)
         except FileExistsError as e:
             raise ExportError(f"{output} exists; remove it, or use --output") from e
