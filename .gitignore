@@ -87,3 +87,7 @@ dask-worker-space/
 # Haskell
 dist-newstyle/
 dist-wasm/
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml

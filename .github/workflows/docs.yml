@@ -4,19 +4,35 @@ on:
   push:
     branches:
       - main
+    paths:
+      - docs/**
+      - CHANGELOG.md
+      - pixi.toml
+      - pixi.lock
+      - .github/workflows/docs.yml
   workflow_dispatch:
 
-permissions:
-  contents: write
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: quarto-dev/quarto-actions/setup@v2
-      - name: Render
-        run: quarto render docs
+      - uses: actions/checkout@v7.0.1
+
+      - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          pixi-version: v0.69.0
+          cache: true
+
+      - name: Build site
+        run: pixi run build
+
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
         with:
