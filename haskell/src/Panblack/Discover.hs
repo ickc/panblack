@@ -25,6 +25,7 @@ module Panblack.Discover
 
 import Control.Exception (IOException, try)
 import Control.Monad (filterM, forM)
+import Data.Containers.ListUtils (nubOrd)
 import Data.ByteString qualified as B
 import Data.List (isPrefixOf, sort)
 import Data.Text (Text)
@@ -48,7 +49,7 @@ compileExclude t = do
       dirOnly = "/" `T.isSuffixOf` t
       body = T.unpack . T.dropWhile (== '/') . T.dropWhileEnd (== '/') $ t
   pat <- either (\e -> Left ("bad exclude " <> show s <> ": " <> e)) Right (tryCompileWith compDefault body)
-  pure (Exclude dirOnly ('/' `elem` body) pat)
+  pure (Exclude dirOnly ("/" `T.isPrefixOf` t || '/' `elem` body) pat)
 
 -- | Whether an entry, given as its path components relative to the root,
 -- is excluded.
@@ -67,10 +68,10 @@ hasExt exts f = case takeExtension f of
   '.' : e -> T.pack e `elem` exts
   _ -> False
 
--- | All files of a profile, as canonical paths. The root must be canonical.
--- A path that doesn't exist is an error.
+-- | All files of a profile, as canonical paths, each once even if @paths@
+-- overlap. The root must be canonical. A path that doesn't exist is an error.
 discover :: FilePath -> [FilePath] -> [Text] -> [Exclude] -> IO (Either String [FilePath])
-discover root paths exts exs = fmap concat . sequence <$> mapM one paths
+discover root paths exts exs = fmap (nubOrd . concat) . sequence <$> mapM one paths
  where
   one p = do
     full <- canonicalizePath (root </> p)

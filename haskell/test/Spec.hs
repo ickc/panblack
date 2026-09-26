@@ -116,6 +116,8 @@ main = do
     not (excluded (ex ["build/"]) False ["build"]) && excluded (ex ["build/"]) True ["a", "build"]
   check "exclude: slash anchors at the root" $
     excluded (ex ["docs/*.md"]) False ["docs", "x.md"] && not (excluded (ex ["docs/*.md"]) False ["a", "docs", "x.md"])
+  check "exclude: a leading slash anchors at the root" $
+    excluded (ex ["/build/"]) True ["build"] && not (excluded (ex ["/build/"]) True ["a", "build"])
   check "exclude: glob on names" $ excluded (ex ["*.draft.md"]) False ["a", "x.draft.md"]
   check "exclude: a wildcard matches a leading dot" $ excluded (ex ["*checkpoints/"]) True ["a", ".ipynb_checkpoints"]
   check "relativeTo" $
@@ -125,6 +127,8 @@ main = do
   check "diff: equal is empty" $ unifiedDiff "a" "b" "x\n" "x\n" == ""
   check "diff: unified" $
     unifiedDiff "a" "b" "1\n2\n3\n" "1\nX\n3\n" == "--- a\n+++ b\n@@ -1,3 +1,3 @@\n 1\n-2\n+X\n 3\n"
+  check "diff: a missing final newline" $
+    unifiedDiff "a" "b" "x" "x\n" == "--- a\n+++ b\n@@ -1 +1 @@\n-x\n\\ No newline at end of file\n+x\n"
 
   -- Notebooks
   let nbProfile = let p = either (error . show) id (markdownProfile "gfm-tex_math_gfm" "gfm-tex_math_gfm" def def) in p {profileChecks = [sourceCheck p, htmlCheck]}

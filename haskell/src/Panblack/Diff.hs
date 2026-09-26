@@ -15,8 +15,13 @@ unifiedDiff oldName newName old new
   | otherwise =
       T.unlines $
         ["--- " <> oldName, "+++ " <> newName]
-          ++ concatMap hunk (getContextDiff (Just 3) (T.lines old) (T.lines new))
+          ++ concatMap hunk (getContextDiff (Just 3) (lines' old) (lines' new))
  where
+  -- A last line without a newline carries diff's marker, so it differs from
+  -- the same line with one.
+  lines' t
+    | T.null t || "\n" `T.isSuffixOf` t = T.lines t
+    | otherwise = let ls = T.lines t in init ls ++ [last ls <> "\n\\ No newline at end of file"]
   hunk h =
     ("@@ -" <> range [n | d <- h, n <- olds d] <> " +" <> range [n | d <- h, n <- news d] <> " @@")
       : concatMap line h

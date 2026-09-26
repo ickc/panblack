@@ -9,6 +9,8 @@
 # Both use the pandoc on PATH for 0.x, which must be the pinned version.
 # For each setting, 0.x and 1.0 format separate copies of the corpus, with
 # no normalizations (0.x has none), and the resulting files are compared.
+# Exits nonzero if a formatter fails (1.0 may reject files, exit code 2) or
+# if any file differs; the differing ones are in SETTING/differ.tsv.
 set -euo pipefail
 PB=$(realpath "$1"); ORACLE=$(realpath "$2"); W=$(realpath -m "$3")
 pinned=$("$PB" --version | sed -n 's/.*(pandoc \(.*\))/\1/p')
@@ -24,6 +26,7 @@ done
 echo "corpus: $(ls corpus | wc -l) files"
 
 # name | 0.x --pandoc-args | 0.x -r | 1.0 pandoc: keys | 1.0 check
+differ=0
 settings=(
   "default||input_format|{}|[source]"
   "default+html||input_format html|{}|[source, html]"
@@ -32,10 +35,12 @@ settings=(
 for s in "${settings[@]}"; do
   IFS='|' read -r name args checks0 pandoc1 checks1 <<<"$s"
   rm -rf "$name" && mkdir -p "$name" && cp -r corpus "$name/old" && cp -r corpus "$name/new"
-  (cd "$name/old" && "$ORACLE" --paths . -r $checks0 --pandoc-args "$args" -t none.toml --no-post-jupytext-sync >../old.log 2>&1 || true)
+  (cd "$name/old" && "$ORACLE" --paths . -r $checks0 --pandoc-args "$args" -t none.toml --no-post-jupytext-sync >../old.log 2>&1) ||
+    { echo "$name: 0.x failed, see $W/$name/old.log" >&2; exit 1; }
   printf -- '- paths: [.]\n  check: %s\n  normalize: []\n  pandoc: %s\n' "$checks1" "$pandoc1" > "$name/new/.panblack.yaml"
-  (cd "$name/new" && "$PB" --no-cache >../new.log 2>&1 || true)
-  python3 - "$name" <<'PY'
+  status=0; (cd "$name/new" && "$PB" --no-cache >../new.log 2>&1) || status=$?
+  [[ $status == 0 || $status == 2 ]] || { echo "$name: 1.0 exited $status, see $W/$name/new.log" >&2; exit 1; }
+  python3 - "$name" <<'PY' || differ=1
 import sys, pathlib, collections
 name = sys.argv[1]; d = pathlib.Path(name)
 counts = collections.Counter(); rows = []
@@ -50,5 +55,7 @@ for orig in sorted(pathlib.Path("corpus").iterdir()):
         counts[f"differ: 0.x {oc}, 1.0 {nc}"] += 1; rows.append(f"{orig.name}\t0.x {oc}\t1.0 {nc}")
 (d/"differ.tsv").write_text("\n".join(rows) + "\n")
 print(f"{name}: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+sys.exit(1 if rows else 0)
 PY
 done
+exit $differ
