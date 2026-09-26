@@ -48,7 +48,6 @@ dependencies:
   - black
   - bump2version
   - ghp-import >=2,<3
-  - nbconvert >=6,<7
   - pylint
   - rstcheck
   - types-pyyaml

@@ -28,7 +28,7 @@ else:
     from functools import cached_property
 
 logger = setup_logging()
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 EXECUTOR: dict[str, futures.Executor] = {
     "multithreading": futures.ThreadPoolExecutor,  # type: ignore[dict-item] # mypy limitation
@@ -390,7 +390,48 @@ class CliOptions(ConfigFile, GlobPath, CoreOptions, ArgsStr):
             logger.info("Finished processing %s files.", len(fs))
 
 
+def export_config(*, toml_path: Path = Path("pyproject.toml"), output: Path = Path(".panblack.yaml")) -> None:
+    """Write panblack 1.0's config from the tool.panblack config in pyproject.toml.
+
+    Paths stay relative to the working directory, as in 0.x, so run this where you run panblack.
+
+    Args:
+        toml_path: path towards the toml file containing the config.
+        output: the file to write, - for stdout. An existing file is never overwritten.
+    """
+    from .export import ExportError, export, write
+
+    config = ConfigFile(toml_path=toml_path)
+    notes: List[str] = []
+    try:
+        if not config.has_toml_config:
+            raise ExportError(f"no {config.toml_key} config in {toml_path}")
+        write(export(config.toml_config, toml_path, notes), None if str(output) == "-" else output)
+    except ExportError as e:
+        logger.error("%s", e)
+        sys.exit(1)
+    for note in notes:
+        logger.info("%s", note)
+    if str(output) != "-":
+        logger.info("Wrote %s. Review it, then remove the %s config.", output, config.toml_key)
+
+
+DEPRECATION = (
+    "panblack 0.x is deprecated, and panblack 1.0 replaces it: https://github.com/ickc/panblack."
+    " Run `panblack export-config` to write its .panblack.yaml from your config."
+)
+
+
 def cli():
+    if sys.argv[1:2] == ["export-config"]:
+        defopt.run(
+            export_config,
+            argv=sys.argv[2:],
+            show_types=True,
+            argparse_kwargs={"prog": "panblack export-config"},
+        )
+        return
+    logger.warning(DEPRECATION)
     cli_options: CliOptions = defopt.run(
         CliOptions,
         strict_kwonly=False,

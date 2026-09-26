@@ -2,4 +2,4 @@
 Authors
 =======
 
-* Kolen Cheung - https://panblack.readthedocs.io/
+* Kolen Cheung - https://github.com/ickc/panblack

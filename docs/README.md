@@ -2,12 +2,16 @@
 title: panblack---black-like formatter for pandoc users.
 ---
 
-``` table
----
-header: false
-markdown: true
-include: badges.csv
-...
+# Deprecated: migrating to 1.0
+
+panblack 0.x is deprecated; panblack 1.0 replaces it.
+`v0.2.0` is the last 0.x release.
+It adds `panblack export-config`,
+which writes 1.0's `.panblack.yaml` from the `tool.panblack` config in `pyproject.toml`:
+
+```bash
+uv tool install git+https://github.com/ickc/panblack@v0.2.0
+panblack export-config    # in the directory you run panblack from
 ```
 
 # Introduction
@@ -112,7 +116,7 @@ In principle the design here supports formats other than markdown, ipynb. But th
 
 For other formats, to achieve idempotence,
 you probably need to have a custom template.
-See [`src/panblack/templates/template.md`](src/panblack/templates/template.md) for an example of a markdown template.
+See [src/panblack/templates/template.md](src/panblack/templates/template.md) for an example of a markdown template.
 
 Also, note that it only makes sense for the input formats to be your source file
 that you are using pandoc to convert to some other formats.
