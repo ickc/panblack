@@ -105,7 +105,9 @@ jobs:
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: panblack-${{ matrix.subdir }}
-          path: dist/panblack-*.*
+          path: |
+            dist/panblack-*.tar.gz
+            dist/panblack-*.zip
           if-no-files-found: error
 
   wasm:
