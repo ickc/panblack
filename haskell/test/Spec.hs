@@ -21,7 +21,7 @@ import Panblack.Target.Html (htmlCheck)
 import System.Directory (getTemporaryDirectory)
 import System.Environment (setEnv)
 import System.Exit (exitFailure)
-import System.FilePath ((</>))
+import System.FilePath (normalise, (</>))
 import Text.Pandoc.Options (WrapOption (..), WriterOptions (..), def)
 import Text.Pandoc.Readers.Markdown (readMarkdown)
 import Text.Pandoc.Writers.Markdown (writeMarkdown)
@@ -121,7 +121,7 @@ main = do
   check "exclude: glob on names" $ excluded (ex ["*.draft.md"]) False ["a", "x.draft.md"]
   check "exclude: a wildcard matches a leading dot" $ excluded (ex ["*checkpoints/"]) True ["a", ".ipynb_checkpoints"]
   check "relativeTo" $
-    relativeTo "/a/b" "/a/c/d" == "../c/d" && relativeTo "/a" "/a/b" == "b" && relativeTo "/a" "/a" == "."
+    relativeTo "/a/b" "/a/c/d" == normalise "../c/d" && relativeTo "/a" "/a/b" == "b" && relativeTo "/a" "/a" == "."
 
   -- Diff
   check "diff: equal is empty" $ unifiedDiff "a" "b" "x\n" "x\n" == ""
@@ -163,12 +163,12 @@ main = do
 
   -- Pairs, as jupytext's paired_paths resolves them
   let paired f formats = pairedPaths f (KM.fromList [("jupytext", A.object [("formats", A.String formats)]), ("language_info", A.object [("file_extension", ".py")])])
-  check "pairs: extension" $ paired "/a/b/nb.ipynb" "ipynb,md" == ["/a/b/nb.md"]
+  check "pairs: extension" $ paired "/a/b/nb.ipynb" "ipynb,md" == map normalise ["/a/b/nb.md"]
   check "pairs: format name and suffix" $
-    paired "/a/b/nb.ipynb" "ipynb,py:percent" == ["/a/b/nb.py"] && paired "/a/b/nb.ipynb" "ipynb,.pct.py:percent" == ["/a/b/nb.pct.py"]
-  check "pairs: directory prefix" $ paired "/a/notebooks/nb.ipynb" "notebooks//ipynb,scripts//py:percent" == ["/a/scripts/nb.py"]
-  check "pairs: file name prefix" $ paired "/a/b/nb.ipynb" "ipynb,md/md" == ["/a/b/mdnb.md"]
-  check "pairs: common names and auto" $ paired "/a/b/nb.ipynb" "notebook,markdown,auto:light" == ["/a/b/nb.md", "/a/b/nb.py"]
+    paired "/a/b/nb.ipynb" "ipynb,py:percent" == map normalise ["/a/b/nb.py"] && paired "/a/b/nb.ipynb" "ipynb,.pct.py:percent" == map normalise ["/a/b/nb.pct.py"]
+  check "pairs: directory prefix" $ paired "/a/notebooks/nb.ipynb" "notebooks//ipynb,scripts//py:percent" == map normalise ["/a/scripts/nb.py"]
+  check "pairs: file name prefix" $ paired "/a/b/nb.ipynb" "ipynb,md/md" == map normalise ["/a/b/mdnb.md"]
+  check "pairs: common names and auto" $ paired "/a/b/nb.ipynb" "notebook,markdown,auto:light" == map normalise ["/a/b/nb.md", "/a/b/nb.py"]
   check "pairs: prefix roots are not resolved" $ null (paired "/a/notebooks/x/nb.ipynb" "notebooks///ipynb,scripts///py:percent")
   check "pairs: inconsistent path" $ null (paired "/a/b/nb.ipynb" "notebooks//ipynb,scripts//py")
   check "pairs: unpaired" $ null (pairedPaths "/a/nb.ipynb" KM.empty)
