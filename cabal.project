@@ -2,3 +2,9 @@ packages: haskell/
 
 -- Reproducible dependency resolution; bump deliberately.
 index-state: 2026-09-25T18:43:53Z
+
+-- As pandoc's own release builds: the binary carries pandoc's data files
+-- (e.g. the abbreviations list the markdown reader uses) instead of looking
+-- for them in the cabal store it was built in.
+package pandoc
+  flags: +embed_data_files

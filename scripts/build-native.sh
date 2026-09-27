@@ -33,6 +33,8 @@ cp "$binpath" "$out/panblack$exe"
 cp COPYING.md COPYRIGHT "$out/"
 
 panblack="$out/panblack$exe"
+# Without embedded data files, pandoc would read them from here.
+export pandoc_datadir=/nonexistent
 "$panblack" --version
 echo "Checking the bundled pandoc..."
 "$panblack" --version | grep -q "(pandoc $(sed -n 's/^ *, pandoc *==\([0-9.]*\)$/\1/p' haskell/panblack.cabal))"
