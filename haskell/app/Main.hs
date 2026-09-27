@@ -1,7 +1,7 @@
 -- | The panblack CLI (see docs/design.md, "CLI").
 module Main (main) where
 
-import Control.Concurrent (forkIO, setNumCapabilities)
+import Control.Concurrent (forkIO, rtsSupportsBoundThreads, setNumCapabilities)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Concurrent.QSem (newQSem, signalQSem, waitQSem)
 import Control.Exception (SomeException, bracket_, displayException, evaluate, try)
@@ -32,11 +32,11 @@ import System.Directory (canonicalizePath, doesDirectoryExist, doesFileExist, ge
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath (takeDirectory, takeExtension, (</>))
+import System.Info (arch)
 import System.Process (cwd, proc, readCreateProcessWithExitCode)
-import System.IO (hPutStrLn, nativeNewline, stderr)
-import System.IO qualified as IO
+import System.IO (hPutStrLn, stderr)
 import System.IO.Error (isDoesNotExistError)
-import Text.Pandoc.App (LineEnding (..))
+import Text.Pandoc.App (LineEnding)
 import Text.Pandoc.Error (renderError)
 import Text.Pandoc.Options (WriterOptions (..))
 import Text.Pandoc.Version (pandocVersionText)
@@ -171,7 +171,8 @@ run paths opts
         let key = cacheKey (show (showVersion version, pandocVersionText, root, pc {pcPaths = []}, settings {setWriter = (setWriter settings) {writerSyntaxMap = mempty}}))
         pure (Loaded name root pc excludes profile cellProfile (setEol settings) key)
       jobs <- maybe getNumProcessors pure (optJobs opts)
-      setNumCapabilities jobs
+      -- The wasm build's RTS has no threads; files then take turns.
+      when rtsSupportsBoundThreads $ setNumCapabilities jobs
       if stdinMode
         then formatStdin opts (isNothing configFile) cwd loaded
         else formatFiles opts cwd (if isNothing configFile then [] else paths) loaded jobs
@@ -309,6 +310,7 @@ runHooks l f = go (pcHooks (lConfig l))
   path = T.pack (relativeTo (lRoot l) f)
   go = \case
     [] -> pure Nothing
+    _ | arch == "wasm32" -> pure (Just "hooks can't run in the wasm build, which can't start processes")
     cmd : rest -> do
       let argv = map (T.unpack . T.replace "{path}" path) cmd
           exe = concat (take 1 argv)
@@ -369,15 +371,9 @@ formatSource l raw =
       | out == raw -> Unchanged
       | otherwise -> Changed raw out (formattedBy f)
      where
-      out = withEol (formattedText f)
+      out = withLineEnding (lEol l) (formattedText f)
  where
-  -- As pandoc's CLI does when reading.
-  src = T.filter (/= '\r') (fromMaybe raw (T.stripPrefix "\xFEFF" raw))
-  withEol = case lEol l of
-    CRLF -> crlf
-    Native | nativeNewline == IO.CRLF -> crlf
-    _ -> id
-  crlf = T.replace "\n" "\r\n"
+  src = sourceText raw
 
 -- | Format a notebook's markdown cells; also returns its metadata.
 formatNotebookSource :: Loaded -> Text -> IO (Outcome, KM.KeyMap A.Value)

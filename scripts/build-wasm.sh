@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Build panblack.wasm, the editor build (md+html tier), and stage it in $1:
+# Build the wasm builds and stage them in $1:
 #
-#   $1/panblack.wasm
+#   $1/panblack.wasm        the CLI
+#   $1/panblack-lite.wasm   the small build for editors
 #   $1/COPYING.md, $1/COPYRIGHT
 #
 # Mirrors pandoc-forge/pandoc-feedstock's scripts/build-wasm.sh. Installs the
@@ -13,6 +14,7 @@ set -euo pipefail
 mkdir -p "$1"
 out=$(cd "$1" && pwd)
 cd "$(dirname "$0")/.."
+repo=$PWD
 prefix=${GHC_WASM_PREFIX:-$HOME/.ghc-wasm}
 stamp="$GHC_WASM_META_REV $GHC_WASM_FLAVOUR"
 
@@ -34,14 +36,50 @@ source "$prefix/env"
 wasm32-wasi-ghc --version
 cabal=(wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm)
 "${cabal[@]}" update
-"${cabal[@]}" build panblack-wasm-html
-# The last line: git checkouts of the patched packages print to stdout.
-binpath=$("${cabal[@]}" list-bin panblack-wasm-html | tail -n 1)
-echo "Built: $binpath"
-wasm-opt -Oz "$binpath" -o "$out/panblack.wasm"
+"${cabal[@]}" build exe:panblack exe:panblack-lite
+for exe in panblack panblack-lite; do
+	# The last line: git checkouts of the patched packages print to stdout.
+	binpath=$("${cabal[@]}" list-bin "exe:$exe" | tail -n 1)
+	echo "Built: $binpath"
+	wasm-opt -Oz "$binpath" -o "$out/$exe.wasm"
+done
 cp COPYING.md COPYRIGHT "$out/"
-ls -l "$out/panblack.wasm"
+ls -l "$out"/*.wasm
 
 echo "Smoke test with $(wasmtime --version)..."
 cd "$(mktemp -d)"
-printf 'Title\n=====\n\n_a_\n' | wasmtime run "$out/panblack.wasm" | diff - <(printf '# Title\n\n*a*\n')
+run() { wasmtime run --dir . "$@"; }
+run "$out/panblack.wasm" --version
+run "$out/panblack-lite.wasm" --version
+printf 'Title\n=====\n\n_a_\n' >doc.md
+printf '# Title\n\n*a*\n' >expected.md
+run "$out/panblack-lite.wasm" --check=source,html <doc.md | diff - expected.md
+run "$out/panblack.wasm" - <doc.md | diff - expected.md
+echo "Checking that files are formatted in place..."
+run "$out/panblack.wasm" doc.md
+diff doc.md expected.md
+
+# panblack-lite must format as the CLI does with the same profile.
+echo "Checking panblack-lite against the CLI..."
+cp "$repo"/*.md "$repo"/docs/*.md .
+settings=(
+	"||"
+	"--check=source,html --wrap=preserve --columns=120 --reference-location=block|check: [source, html]|{wrap: preserve, columns: 120, reference-location: block}"
+	"--from=gfm --to=gfm-yaml_metadata_block --normalize=|normalize: []|{from: gfm, to: gfm-yaml_metadata_block}"
+)
+for s in "${settings[@]}"; do
+	IFS='|' read -r args keys pandoc <<<"$s"
+	printf -- '- paths: [.]\n  %s\n  pandoc: %s\n' "${keys:-exts: [md]}" "${pandoc:-{\}}" >cfg.yaml
+	for f in *.md; do
+		lite=0 cli=0
+		# shellcheck disable=SC2086
+		run "$out/panblack-lite.wasm" $args <"$f" >lite.out 2>/dev/null || lite=$?
+		run "$out/panblack.wasm" --config cfg.yaml --stdin-filename "$f" - <"$f" >cli.out 2>/dev/null || cli=$?
+		if [[ $lite != "$cli" ]] || ! cmp -s lite.out cli.out; then
+			echo "$f with '$args': panblack-lite (exit $lite) and the CLI (exit $cli) differ" >&2
+			exit 1
+		fi
+	done
+done
+echo "panblack-lite matches the CLI"
+

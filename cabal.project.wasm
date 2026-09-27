@@ -1,5 +1,5 @@
--- The editor-build spike (plan step 1). Build with:
---   wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm build panblack-wasm-md panblack-wasm-html
+-- The wasm builds: the CLI and panblack-lite. Build with:
+--   wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm build exe:panblack exe:panblack-lite
 --
 -- Mirrors the `if arch(wasm32)` block of pandoc 3.10.2's cabal.project,
 -- minus what only pandoc-cli and the Lua engine need. The patches in

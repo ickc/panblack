@@ -111,7 +111,7 @@ jobs:
           if-no-files-found: error
 
   wasm:
-    name: panblack-wasm
+    name: panblack (wasm32-wasi)
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     steps:
@@ -134,8 +134,8 @@ jobs:
       - name: Install alex and happy
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends alex happy
 
-      - name: Build panblack.wasm
-        run: bash scripts/build-wasm.sh dist/panblack
+      - name: Build panblack.wasm and panblack-lite.wasm
+        run: bash scripts/build-wasm.sh dist/wasm
 
       - name: Save wasm cabal store
         if: always() && steps.cache.outputs.cache-hit != 'true'
@@ -146,9 +146,12 @@ jobs:
 
       - name: Archive
         run: |
-          name=panblack-$VERSION-wasm32-wasi
-          mv dist/panblack "dist/$name"
-          tar czf "dist/$name.tar.gz" -C dist "$name"
+          for exe in panblack panblack-lite; do
+            name=$exe-$VERSION-wasm32-wasi
+            mkdir "dist/$name"
+            cp "dist/wasm/$exe.wasm" dist/wasm/COPYING.md dist/wasm/COPYRIGHT "dist/$name/"
+            tar czf "dist/$name.tar.gz" -C dist "$name"
+          done
 
       - uses: actions/upload-artifact@v7.0.1
         with:

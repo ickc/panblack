@@ -74,7 +74,10 @@ executable panblack
     , directory
     , filepath
     , process       >=1.6 && <1.7
-  ghc-options:      -threaded -rtsopts
+  ghc-options:      -rtsopts
+  -- The wasm backend has no threaded RTS.
+  if !arch(wasm32)
+    ghc-options:    -threaded
 
 test-suite spec
   import:           warnings, deps
@@ -88,16 +91,16 @@ test-suite spec
     , directory
     , filepath
 
--- Editor-build spike (plan step 1). Build with cabal.project.wasm.
-executable panblack-wasm-md
+-- The small build for editors: stdin to stdout, markdown only (see
+-- docs/design.md, "panblack-lite").
+executable panblack-lite
   import:           warnings, deps
-  hs-source-dirs:   wasm
+  hs-source-dirs:   lite
   main-is:          Main.hs
-  build-depends:    panblack
-
-executable panblack-wasm-html
-  import:           warnings, deps
-  hs-source-dirs:   wasm
-  main-is:          Main.hs
-  build-depends:    panblack
-  cpp-options:      -DWITH_HTML
+  other-modules:    Paths_panblack
+  autogen-modules:  Paths_panblack
+  build-depends:
+    , panblack
+    , aeson
+    , bytestring
+    , yaml

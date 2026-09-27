@@ -11,6 +11,9 @@ module Panblack.Config
   , Settings (..)
   , loadSettings
   , buildProfile
+  , buildProfileWith
+  , sourceText
+  , withLineEnding
   , pandocKeys
   , starterConfig
   ) where
@@ -31,11 +34,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Yaml qualified as Y
-import Panblack.Guard (Profile (..), sourceCheck)
+import Panblack.Guard (Check, Profile (..), sourceCheck)
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize (Normalization, normalizationByName, normalizationName, normalizing)
 import Panblack.Target.Registry (targetByName)
 import System.FilePath ((</>))
+import System.IO qualified as IO
 import Text.Pandoc.App (LineEnding (..), Opt (..), defaultOpts)
 import Text.Pandoc.Class (runIO)
 import Text.Pandoc.Data (readDataFile)
@@ -216,10 +220,30 @@ loadSettings root pc = do
 
 -- | The profile to format with: reader and writer, normalizations, checks.
 buildProfile :: Settings -> [Text] -> [Normalization] -> Either PandocError Profile
-buildProfile s checks ns = do
+buildProfile = buildProfileWith targetByName
+
+-- | 'buildProfile' with the given lookup for the checks other than
+-- @source@. A build that doesn't call 'targetByName' leaves pandoc's writer
+-- registry out.
+buildProfileWith :: (Text -> Either PandocError Check) -> Settings -> [Text] -> [Normalization] -> Either PandocError Profile
+buildProfileWith target s checks ns = do
   base <- normalizing ns <$> markdownProfile (setFrom s) (setTo s) (setReader s) (setWriter s)
-  cs <- traverse (\c -> if c == "source" then Right (sourceCheck base) else targetByName c) checks
+  cs <- traverse (\c -> if c == "source" then Right (sourceCheck base) else target c) checks
   pure base {profileChecks = cs}
+
+-- | The source to format, as pandoc's CLI reads it: without a byte order
+-- mark or carriage returns.
+sourceText :: Text -> Text
+sourceText raw = T.filter (/= '\r') (fromMaybe raw (T.stripPrefix "\xFEFF" raw))
+
+-- | Formatted text with the profile's line endings.
+withLineEnding :: LineEnding -> Text -> Text
+withLineEnding = \case
+  CRLF -> crlf
+  Native | IO.nativeNewline == IO.CRLF -> crlf
+  _ -> id
+ where
+  crlf = T.replace "\n" "\r\n"
 
 -- | What @panblack init@ prints: the recommended defaults for markdown.
 starterConfig :: Text

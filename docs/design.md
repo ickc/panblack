@@ -95,14 +95,22 @@ Since AST equality is only a shortcut, normalizing the AST before comparing (e.g
 - Handles file discovery, parallelism (GHC threads, `-j`), IO and hooks.
 - Built through `pandoc-forge/pandoc-feedstock` alongside pandoc and pandoc-crossref.
 
-## `panblack-wasm` (editor build)
+## wasm builds
 
-- Imports concrete readers and writers directly (`Text.Pandoc.Readers.Markdown`, `Text.Pandoc.Writers.Markdown`, optionally `Writers.HTML`), never `Text.Pandoc.App` or the reader/writer registries. `-split-sections` plus linker GC can then drop the unused formats.
-- One tier, `md+html`: the markdown reader and writer, with checks `source` and `html`. pandoc's Markdown writer imports the HTML writer itself (for tables markdown can't express), so a markdown-only build is no smaller (see the spike results below).
-- A guard failure makes the editor skip formatting and show a diagnostic. The guard is never dropped.
+Two WASI command modules, both released:
+
+- `panblack.wasm`: the CLI, the same `app/Main.hs`, e.g. `wasmtime run --dir . panblack.wasm --check`. Everything works but hooks, which report an error since WASI can't start processes, and `-j`, since the wasm RTS has no threads. The cache needs a writable cache directory from the host (`--dir cache::/cache --env XDG_CACHE_HOME=/cache`); without one, nothing is cached.
+- `panblack-lite.wasm`: the editor build, below.
+
+## `panblack-lite` (editor build)
+
+- stdin to stdout with one profile given by options: `--check` (`source`, `html`; default `source`), `--normalize` (default all), and every `pandoc:` key as an option (`--wrap=preserve --columns=72`). These are parsed by the CLI's config code, so the same settings format the same way; the golden test checks this. No config file, paths, cache, notebooks or hooks.
+- Exit codes as the CLI's stdin mode: 0 formatted, 2 rejected, 3 error; the input is passed through unless it was formatted. A guard failure makes the editor skip formatting and show a diagnostic. The guard is never dropped.
+- Never calls `targetByName`, so pandoc's writer registry isn't linked; the other readers and writers are dropped at link time. pandoc's Markdown writer imports the HTML writer itself (for tables markdown can't express), so leaving out the `html` check would make it no smaller; there is one tier.
 - Target use is format on save, so latency needs to be interactive, not per-keystroke.
+- Sizes after `wasm-opt -Oz`: lite 24 MB (6.3 MB gzipped), the full CLI 36 MB (10 MB gzipped). The native CLI is 120 MB: native code is larger than wasm after `-Oz`, which also drops the debug name section (62 MB for lite before it; `-O2` and `-Os` give 37 MB).
 
-Spike results (plan step 1, `haskell/wasm/`, GHC 9.12.4 wasm backend):
+Spike results (plan step 1, GHC 9.12.4 wasm backend):
 
 - Stock Hackage pandoc 3.10.2 builds for wasm; no fork, so the exact version pin holds. The output is byte-identical to the native build.
 - Size: 24.7 MB after `wasm-opt -Oz`, 6.2 MB gzipped. The full pandoc.org `pandoc.wasm` is 59 MB. The `md` and `md+html` tiers came out the same size, and building every package with `split-sections` changed nothing: the linker already drops unreachable code, and what is left is reachable. Most of it is static data (13 MB); among named code the largest are texmath, emojis and commonmark, all used by the markdown reader and writer. Going smaller would need changes in pandoc.
@@ -562,7 +570,7 @@ Expect a one-time reformat commit per project, because the pandoc version change
 # Plan
 
 0. Get 0.x running locally against a recent pandoc, as a reference *oracle* for parity tests. No release. **Done** (see [Running the 0.x oracle]).
-1. Spike: `panblack-core` markdown-only on the GHC wasm backend, plus size and latency numbers. This decides the wasm tiers. **Done** (see [`panblack-wasm` (editor build)]). The core and a stdin→stdout prototype driver are in `haskell/` (native output byte-identical to the pandoc CLI with the 0.x template).
+1. Spike: `panblack-core` markdown-only on the GHC wasm backend, plus size and latency numbers. This decides the wasm tiers. **Done** (see [`panblack-lite` (editor build)]). The core and a stdin→stdout prototype driver are in `haskell/` (native output byte-identical to the pandoc CLI with the 0.x template).
     - 1b. Tables (see [Tables]), in parallel with the spike. **Done** for the synthetic set; real corpora in step 2.
 2. Core and CLI for markdown: guard, config, `--check`/`--diff`. Golden tests against the 0.x oracle on real corpora, with both using the same pandoc version.
     - CLI, config and normalizations: **done**. With no normalizations, the output is byte-identical to the pandoc CLI (what 0.x runs) for every formatter option on four documents (pandoc's `testsuite.txt`, `markdown-reader-more.txt` and `MANUAL.txt`, and this doc), for `markdown`, `gfm` and `commonmark_x`. With all of them on, it is byte-identical to pandoc with the Lua prototype on the 24-document corpus.
