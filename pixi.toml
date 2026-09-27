@@ -1,0 +1,16 @@
+[workspace]
+authors = ["Kolen Cheung <christian.kolen@gmail.com>"]
+name = "panblack-docs"
+description = "The panblack docs site; panblack itself builds with cabal"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+
+[dependencies]
+quarto = "*"
+
+[activation]
+env = { QUARTO_PORT = "21576" }
+
+[tasks]
+build = { cmd = "quarto render", cwd = "docs", description = "Render the Quarto website" }
+serve = { cmd = "quarto preview docs --port $QUARTO_PORT --host 0.0.0.0", description = "Serve the Quarto site on port QUARTO_PORT" }
