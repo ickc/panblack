@@ -34,7 +34,7 @@ import System.Exit (ExitCode (..), exitWith)
 import System.FilePath (takeDirectory, takeExtension, (</>))
 import System.Info (arch)
 import System.Process (cwd, proc, readCreateProcessWithExitCode)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, hSetEncoding, hSetNewlineMode, noNewlineTranslation, stderr, stdout, utf8)
 import System.IO.Error (isDoesNotExistError)
 import Text.Pandoc.App (LineEnding)
 import Text.Pandoc.Error (renderError)
@@ -126,7 +126,10 @@ data Result = Result
   }
 
 main :: IO ()
-main =
+main = do
+  -- UTF-8, with line endings as written, whatever the locale: the profile
+  -- decides them, as pandoc's CLI does.
+  forM_ [stdout, stderr] $ \h -> hSetEncoding h utf8 >> hSetNewlineMode h noNewlineTranslation
   getArgs >>= \case
     ["init"] -> TIO.putStr starterConfig
     "init" : _ -> die' "init takes no arguments"

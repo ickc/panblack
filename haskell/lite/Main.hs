@@ -29,7 +29,7 @@ import Paths_panblack (version)
 import System.Console.GetOpt
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, hSetEncoding, hSetNewlineMode, noNewlineTranslation, stderr, stdout, utf8)
 import Text.Pandoc.Error (PandocError (..), renderError)
 import Text.Pandoc.Version (pandocVersionText)
 
@@ -87,6 +87,8 @@ die' msg = hPutStrLn stderr ("panblack-lite: " <> msg) >> exitWith (ExitFailure 
 
 main :: IO ()
 main = do
+  -- As the CLI: UTF-8, with line endings as written, whatever the locale.
+  mapM_ (\h -> hSetEncoding h utf8 >> hSetNewlineMode h noNewlineTranslation) [stdout, stderr]
   args <- getArgs
   opts <- case getOpt Permute options args of
     (fs, [], []) -> either (die' . (<> "\n" <> usage)) pure $ foldl' (>>=) (Right defaults) fs

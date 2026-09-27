@@ -38,9 +38,14 @@ export pandoc_datadir=/nonexistent
 "$panblack" --version
 echo "Checking the bundled pandoc..."
 "$panblack" --version | grep -q "(pandoc $(sed -n 's/^ *, pandoc *==\([0-9.]*\)$/\1/p' haskell/panblack.cabal))"
-echo "Checking that stdin is formatted..."
+echo "Checking that stdin is formatted, as UTF-8 whatever the locale..."
 cd "$(mktemp -d)"
-printf 'Title\n=====\n\n_a_\n' | "$panblack" - | tr -d '\r' | diff - <(printf '# Title\n\n*a*\n')
+# The default line endings are the platform's.
+nl='\n'
+[[ -n $exe ]] && nl='\r\n'
+printf "Caf\xc3\xa9\n====\n\n_a_\n" | LC_ALL=C "$panblack" - >out.md
+# shellcheck disable=SC2059
+printf "# Caf\xc3\xa9$nl$nl*a*$nl" | cmp - out.md
 if [[ $(uname -s) == Linux ]]; then
 	echo "Checking that the binary is statically linked..."
 	file "$panblack" | grep -q 'statically linked'
