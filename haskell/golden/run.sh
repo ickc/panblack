@@ -3,7 +3,7 @@
 #
 # usage: golden/run.sh PANBLACK ORACLE WORKDIR
 #   PANBLACK  the 1.0 binary (cabal list-bin exe:panblack)
-#   ORACLE    the 0.x entry point (the panblack of the 0.x branch, see docs/design.md)
+#   ORACLE    the 0.x entry point (the panblack of v0.2.0, see docs/design.md)
 #   WORKDIR   scratch directory; the pandoc source is fetched into it
 #
 # Both use the pandoc on PATH for 0.x, which must be the pinned version.

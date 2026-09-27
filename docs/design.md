@@ -548,7 +548,7 @@ Why pinning matters: 0.x uses whatever pandoc is on PATH. Running it with pandoc
 
 # Migration from 0.x
 
-panblack 0.x was never published to PyPI or conda-forge; users install it from the git repository. So the "final Python release" is a git tag, `v0.2.0`, on the `0.x` branch (`main` before 1.0, plus this release), installable with `uv tool install git+https://github.com/ickc/panblack@v0.2.0`. It adds `panblack export-config`, which reads the `[["tool.panblack"]]` array from `pyproject.toml` (note: that is a literal quoted key, not nested `tool.panblack`) and writes `.panblack.yaml`. It also prints a deprecation notice pointing to 1.0. This way the Haskell binary never needs a TOML parser.
+panblack 0.x was never published to PyPI or conda-forge; users install it from the git repository. So the "final Python release" is a git tag, `v0.2.0`, on `main` before 1.0, installable with `uv tool install git+https://github.com/ickc/panblack@v0.2.0`. It adds `panblack export-config`, which reads the `[["tool.panblack"]]` array from `pyproject.toml` (note: that is a literal quoted key, not nested `tool.panblack`) and writes `.panblack.yaml`. It also prints a deprecation notice pointing to 1.0. This way the Haskell binary never needs a TOML parser.
 
 | 0.x (`pyproject.toml`) | 1.0 (`.panblack.yaml`) |
 |---|---|
@@ -578,19 +578,19 @@ Expect a one-time reformat commit per project, because the pandoc version change
 3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [ipynb] and [External hooks]). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that formatting the text side of a pair needs `jupytext --update` rather than `--sync`, and no jupytext YAML header (see [Alternative: format the text side]).
 4. Settle the open questions, then freeze the config schema.
     - A cache, as black has: **done** (see [Cache]). Runs are already fast (0.06 s for one notebook, 0.5 s for 137, of which about 0.04 s is start-up), so a daemon wouldn't buy much; the cost worth saving is re-running hooks such as jupytext and ruff, and large documents, on files that haven't changed. Watching files is left to tools such as `watchexec`.
-5. Python `v0.2.0` tag: `export-config` and the deprecation notice. **Done** on the `0.x` branch (`src/panblack/export.py`, tagging pending); the Python code is removed from this branch. On the author's wiki config (three profiles, one ipynb with a spelled-out extension list), the exported config loads in 1.0, formats, and settles; the cell format comes out as `markdown+autolink_bare_uris+east_asian_line_breaks-latex_macros-raw_attribute-table_attributes`, the flavour the list was written to mimic, plus `table_attributes`, which pandoc added later.
+5. Python `v0.2.0` tag: `export-config` and the deprecation notice. **Done**, tagged on `main` (`src/panblack/export.py`); the Python code is removed from this branch. On the author's wiki config (three profiles, one ipynb with a spelled-out extension list), the exported config loads in 1.0, formats, and settles; the cell format comes out as `markdown+autolink_bare_uris+east_asian_line_breaks-latex_macros-raw_attribute-table_attributes`, the flavour the list was written to mimic, plus `table_attributes`, which pandoc added later.
 6. panblack 1.0: Hackage (see [Publishing]), feedstock packaging, binaries, pre-commit hook. Migrate the dependent projects.
 7. The wasm build and the editor integration.
 
 ## Running the 0.x oracle
 
-0.x lives on the `0.x` branch. It works with Python 3.12 to 3.14 and pandoc 3.10.2 with no code changes. For the golden tests, install it on its own:
+0.x is tagged `v0.2.0`. It works with Python 3.12 to 3.14 and pandoc 3.10.2 with no code changes. For the golden tests, install it on its own:
 
 ```bash
-uv tool install git+https://github.com/ickc/panblack@v0.2.0   # or a worktree of the 0.x branch
+uv tool install git+https://github.com/ickc/panblack@v0.2.0   # or a worktree of the tag
 ```
 
-To run its own tests, in a worktree of the `0.x` branch:
+To run its own tests, in a worktree of `v0.2.0`:
 
 ```bash
 uv venv .venv && uv pip install -e . pytest tomli jupytext
@@ -637,7 +637,7 @@ Things to know:
 
 # Licence
 
-GPL-2.0-or-later, as pandoc, laid out as pandoc does: `COPYRIGHT` holds the notice and the exceptions, `COPYING.md` the licence text (the cabal package in `haskell/` links to both). pandoc is GPL-2.0-or-later and every panblack binary bundles it, so distributed binaries were covered by the GPL anyway; with the source under the same licence there is no split, and the repository can include pandoc-derived material. 0.x keeps BSD-3: its releases, `v0.2.0` the last, are tagged on the `0.x` branch, and the move to the GPL comes with the rewrite. The exception is `haskell/wasm/patches`, MIT, copied from pandoc.
+GPL-2.0-or-later, as pandoc, laid out as pandoc does: `COPYRIGHT` holds the notice and the exceptions, `COPYING.md` the licence text (the cabal package in `haskell/` links to both). pandoc is GPL-2.0-or-later and every panblack binary bundles it, so distributed binaries were covered by the GPL anyway; with the source under the same licence there is no split, and the repository can include pandoc-derived material. 0.x keeps BSD-3: its releases, `v0.2.0` the last, are tagged on `main`, and the move to the GPL comes with the rewrite. The exception is `haskell/wasm/patches`, MIT, copied from pandoc.
 
 Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.10.2`), not copied into the repository. That keeps them in step with the pinned version whatever the licence.
 

@@ -7,7 +7,7 @@ title: panblack---black-like formatter for pandoc users
 Kind of like black, an opinionated formatter powered by pandoc, for markdown and Jupyter notebooks.
 
 panblack 1.0 is a rewrite in Haskell that bundles pandoc, in progress; see the [design](design.md).
-The Python 0.x lives on the [`0.x` branch](https://github.com/ickc/panblack/tree/0.x).
+The Python 0.x is in the history; its last release is [`v0.2.0`](https://github.com/ickc/panblack/tree/v0.2.0).
 
 # Key idea
 
