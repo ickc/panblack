@@ -99,7 +99,7 @@ Since AST equality is only a shortcut, normalizing the AST before comparing (e.g
 
 Two WASI command modules, both released:
 
-- `panblack.wasm`: the CLI, the same `app/Main.hs`, e.g. `wasmtime run --dir . panblack.wasm --check`. Everything works but hooks, which report an error since WASI can't start processes, and `-j`, since the wasm RTS has no threads. The cache needs a writable cache directory from the host (`--dir cache::/cache --env XDG_CACHE_HOME=/cache`); without one, nothing is cached.
+- `panblack.wasm`: the CLI, the same `app/Main.hs`, e.g. `wasmtime run --dir . panblack.wasm --check`. The same config works. WASI can't start processes, so hooks are skipped with a warning naming them, for the host or the user to run; files with hooks are then not cached. `-j` formats one file at a time, since the wasm RTS has no threads. The cache needs a writable cache directory from the host (`--dir cache::/cache --env XDG_CACHE_HOME=/cache`); without one, nothing is cached.
 - `panblack-lite.wasm`: the editor build, below.
 
 ## `panblack-lite` (editor build)

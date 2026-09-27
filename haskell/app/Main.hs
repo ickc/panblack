@@ -217,6 +217,10 @@ formatFiles opts cwd only loaded jobs = do
             | isFile && M.notMember a byFile -> hPutStrLn stderr ("panblack: " <> p <> ": no profile matches; skipped")
             | otherwise -> pure ()
         pure [(f, l) | (f, l) <- files, any (f `isUnder`) onlyAbs]
+  unless (canRunHooks || optCheck opts || optDiff opts) $ forM_ loaded $ \l ->
+    unless (null (pcHooks (lConfig l))) . hPutStrLn stderr $
+      "warning: " <> lName l <> ": the wasm build can't run hooks; run them yourself: "
+        <> intercalate "; " (map (unwords . map T.unpack) (pcHooks (lConfig l)))
   let covered = M.keysSet byFile
       keys = S.toList (S.fromList (map lCacheKey loaded))
   caches <- M.fromList <$> forM keys (\k -> (k,) <$> if optNoCache opts then pure noCache else loadCache k)
@@ -271,7 +275,7 @@ formatFile opts cwd covered cache l f = do
           _ -> pure ()
         -- As 0.x ran jupytext after every accepted file, changed or not.
         hookError <- case outcome of
-          _ | dry -> pure Nothing
+          _ | dry || not canRunHooks -> pure Nothing
           Unchanged -> runHooks l f
           Changed {} -> runHooks l f
           PartlyChanged {} -> runHooks l f
@@ -281,6 +285,8 @@ formatFile opts cwd covered cache l f = do
         -- file (jupytext --update can) must see it once more first.
         entry <- case outcome of
           _ | not (null warnings) || isJust hookError -> pure Forget
+          -- Skipped hooks: a run that can run them must see the file.
+          _ | not canRunHooks && not (null hooks) -> pure Forget
           Unchanged | dry -> pure (if null hooks then Record (digest final) else Forget)
           _ | dry -> pure Forget
           Unchanged -> recordIfSame hooks final
@@ -305,6 +311,11 @@ rewritten = \case
 isNotebook :: FilePath -> Bool
 isNotebook f = takeExtension f == ".ipynb"
 
+-- | WASI can't start processes, so the wasm build skips hooks, with a
+-- warning.
+canRunHooks :: Bool
+canRunHooks = arch /= "wasm32"
+
 -- | Run a profile's hooks in order, in the config directory, stopping at the
 -- first that fails.
 runHooks :: Loaded -> FilePath -> IO (Maybe Text)
@@ -313,7 +324,6 @@ runHooks l f = go (pcHooks (lConfig l))
   path = T.pack (relativeTo (lRoot l) f)
   go = \case
     [] -> pure Nothing
-    _ | arch == "wasm32" -> pure (Just "hooks can't run in the wasm build, which can't start processes")
     cmd : rest -> do
       let argv = map (T.unpack . T.replace "{path}" path) cmd
           exe = concat (take 1 argv)

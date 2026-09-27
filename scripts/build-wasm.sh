@@ -58,6 +58,13 @@ run "$out/panblack.wasm" - <doc.md | diff - expected.md
 echo "Checking that files are formatted in place..."
 run "$out/panblack.wasm" doc.md
 diff doc.md expected.md
+echo "Checking that hooks are skipped with a warning..."
+mkdir hooks
+printf -- '- paths: [.]\n  hooks: [[touch, hooked]]\n' >hooks/.panblack.yaml
+cp doc.md hooks/
+(cd hooks && run "$out/panblack.wasm" 2>err)
+grep -q "can't run hooks; run them yourself: touch hooked" hooks/err
+[[ ! -e hooks/hooked ]]
 
 # panblack-lite must format as the CLI does with the same profile.
 echo "Checking panblack-lite against the CLI..."
