@@ -112,16 +112,16 @@ Two WASI command modules, both released:
 
 Spike results (plan step 1, GHC 9.12.4 wasm backend):
 
-- Stock Hackage pandoc 3.10.2 builds for wasm; no fork, so the exact version pin holds. The output is byte-identical to the native build.
+- Stock Hackage pandoc 3.12.1 builds for wasm; no fork, so the exact version pin holds. The output is byte-identical to the native build.
 - Size: 24.7 MB after `wasm-opt -Oz`, 6.2 MB gzipped. The full pandoc.org `pandoc.wasm` is 59 MB. The `md` and `md+html` tiers came out the same size, and building every package with `split-sections` changed nothing: the linker already drops unreachable code, and what is left is reachable. Most of it is static data (13 MB); among named code the largest are texmath, emojis and commonmark, all used by the markdown reader and writer. Going smaller would need changes in pandoc.
 - Latency on this 321-line doc: 0.16 s under wasmtime (precompiled); under node, 38 ms to compile, 245 ms for the first run, then about 175 ms. A one-line file takes 0.01 s. Fine for format-on-save.
 - The host must pass a program name in `argv`; with an empty `argv` the GHC runtime exits with code 71.
 
-Toolchain: [ghc-wasm-meta](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta), installed as in [pandoc-wasm's CI](https://github.com/haskell-wasm/pandoc-wasm/blob/master/.github/workflows/build.yml) (download the archive, `FLAVOUR=9.12 ./setup.sh`), plus native `alex` and `happy`. `cabal.project.wasm` mirrors the `if arch(wasm32)` block of pandoc 3.10.2's own `cabal.project`: pandoc with `-http +embed_data_files`, and five patched dependencies whose patches are copied from pandoc's `wasm/patches` into `haskell/wasm/patches`. (The older pandoc-wasm fork, `haskell-wasm/pandoc`, is stale and not needed.)
+Toolchain: [ghc-wasm-meta](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta), installed as in [pandoc-wasm's CI](https://github.com/haskell-wasm/pandoc-wasm/blob/master/.github/workflows/build.yml) (download the archive, `FLAVOUR=9.12 ./setup.sh`), plus native `alex` and `happy`. `cabal.project.wasm` mirrors the `if arch(wasm32)` block of pandoc 3.12.1's own `cabal.project`: pandoc with `-http +embed_data_files`, and five patched dependencies whose patches are copied from pandoc's `wasm/patches` into `haskell/wasm/patches`. (The older pandoc-wasm fork, `haskell-wasm/pandoc`, is stale and not needed.)
 
 # Formatter options
 
-Which pandoc options make sense for a formatter. The list is taken from pandoc 3.10.2's source: the `ReaderOptions` fields that the Markdown and CommonMark readers use, and the `WriterOptions` fields that the Markdown writer uses.
+Which pandoc options make sense for a formatter. The list is taken from pandoc 3.10.2's source, and still holds for 3.12.1: the `ReaderOptions` fields that the Markdown and CommonMark readers use, and the `WriterOptions` fields that the Markdown writer uses.
 
 ## Formats and their table extensions
 
@@ -235,7 +235,7 @@ These are cases the happy case excludes. The guard may still accept such files, 
 
 ## Upstream issues
 
-Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for issues and patches. Known limitations that are *not* listed: the alignment of simple tables, pipe tables padded past `columns`, and bare text in divs.
+Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for issues and patches. Rechecked with pandoc 3.12.1: all but 7 still reproduce. Known limitations that are *not* listed: the alignment of simple tables, pipe tables padded past `columns`, and bare text in divs.
 
 1. **Table cells get raw line breaks with `--wrap=preserve`.** A cell whose text contains a soft line break is written with the newline inside the row. For simple tables (the default choice) the continuation becomes a new row; for pipe tables the row is invalid. With `--wrap=auto` it becomes a space, as it should here too. Reproduction: `haskell/experiments/softbreak-in-cell.native`, a two-column table with widths at their defaults and one cell `wrapped⏎text`:
 
@@ -289,7 +289,7 @@ Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for is
 
     This reads back as a link to `/hithere` followed by a literal `)`.
 
-7. **The commonmark writer drops the parentheses in `\\(...\\)`** (found on notebooks written for MathJax). The text is read correctly, as `Str "\\(a\\)"`, but written without the parentheses, so it reads back as `\a\`:
+7. **Fixed in pandoc 3.12 ([jgm/pandoc#11927](https://github.com/jgm/pandoc/issues/11927)).** **The commonmark writer drops the parentheses in `\\(...\\)`** (found on notebooks written for MathJax). The text is read correctly, as `Str "\\(a\\)"`, but written without the parentheses, so it reads back as `\a\`:
 
     ```
     $ printf '%s\n' 'x \\(a\\) y' | pandoc -f gfm -t gfm   # x \\a\\ y
@@ -452,7 +452,7 @@ pandoc's ipynb round trip normalizes more than a formatter should. For example, 
 Results on 137 distinct notebooks found on the author's machine (tutorials, course material, blog posts), with `check: [source, html]` and `wrap: preserve`, took 0.5 s in all. 2 are paired with markdown. 61 were reformatted and 63 were already formatted. 11 were partly reformatted, keeping 14 cells, all rightly:
 
 - 9 (copies of one tutorial): display math spanning lines, which pandoc reads differently after formatting.
-- 1: `\\(\sigma\\)` in three cells, which the commonmark writer writes without the parentheses ([Upstream issues] 7).
+- 1: `\\(\sigma\\)` in three cells, which the commonmark writer wrote without the parentheses ([Upstream issues] 7, fixed in pandoc 3.12).
 - 1: a fenced block with the info string `text`, which the commonmark writer drops ([Upstream issues] 8).
 
 1 was rejected by the whole-notebook check: it is paired with `_pair//md` and numbers its footnotes across cells. 1 file was not JSON. Every notebook that was in Jupyter's own layout before (131 of them) still is afterwards, code cells, outputs and metadata are unchanged, and a second run changes nothing.
@@ -535,7 +535,7 @@ As black does, panblack skips files it has already accepted. Implementation: `Pa
 - panblack has its own version number, following the Haskell PVP (see [Publishing]): `A.B.C`, where `A.B` is the major version.
 - A pandoc bump means a major (`A.B`) release, with "style changes" in the changelog. `C` releases never change output.
 - Breaking config changes bump `A`.
-- The bundled pandoc version is shown everywhere a user looks for it, but is not part of the version number: `panblack --version` (`panblack 1.0.0 (pandoc 3.10.2)`), the changelog entry, and the GitHub release notes.
+- The bundled pandoc version is shown everywhere a user looks for it, but is not part of the version number: `panblack --version` (`panblack 1.0.0 (pandoc 3.12.1)`), the changelog entry, and the GitHub release notes.
 
 Why the pandoc version is not in the version number (for example `3.10.2-1.0`):
 
@@ -639,7 +639,7 @@ Things to know:
 
 GPL-2.0-or-later, as pandoc, laid out as pandoc does: `COPYRIGHT` holds the notice and the exceptions, `COPYING.md` the licence text (the cabal package in `haskell/` links to both). pandoc is GPL-2.0-or-later and every panblack binary bundles it, so distributed binaries were covered by the GPL anyway; with the source under the same licence there is no split, and the repository can include pandoc-derived material. 0.x keeps BSD-3: its releases, `v0.2.0` the last, are tagged on `main`, and the move to the GPL comes with the rewrite. The exception is `haskell/wasm/patches`, MIT, copied from pandoc.
 
-Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.10.2`), not copied into the repository. That keeps them in step with the pinned version whatever the licence.
+Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.12.1`), not copied into the repository. That keeps them in step with the pinned version whatever the licence.
 
 # Open questions
 

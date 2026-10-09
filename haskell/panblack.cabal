@@ -27,7 +27,7 @@ common deps
   default-extensions: DerivingStrategies LambdaCase MultiWayIf OverloadedStrings
   build-depends:
     , base          >=4.18 && <5
-    , pandoc        ==3.10.2
+    , pandoc        ==3.12.1
     , pandoc-types  >=1.23.1.2 && <1.24
     , doctemplates  >=0.11 && <0.12
     , mtl           >=2.2 && <2.4

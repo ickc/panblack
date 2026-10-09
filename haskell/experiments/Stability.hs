@@ -15,7 +15,7 @@
 --
 -- The corpus used in docs/design.md is these tables, the design doc, and
 -- pandoc's own markdown test files and MANUAL.txt sections with tables, taken
--- from the pinned pandoc source (cabal get pandoc-3.10.2).
+-- from the pinned pandoc source (cabal get pandoc-3.12.1).
 module Main (main) where
 
 import Data.List (isSuffixOf, sort)

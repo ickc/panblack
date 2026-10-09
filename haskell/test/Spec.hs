@@ -153,8 +153,8 @@ main = do
     fmap resultBytes (either (Left . failWhere) Right (formatNb False (nb [mdCell "\"[a]\"", mdCell "\"[a]: http://x\""] "{}")))
       -- The definition is unused in its own cell, so the writer drops it.
       == Right (nb [mdCell "\"\\\\[a\\\\]\"", mdCell "\"\""] "{}")
-  -- The gfm writer drops the parentheses in @\\(a\\)@ (pandoc 3.10.2).
-  let rejectedCell = mdCell "\"x (\\\\\\\\(a\\\\\\\\)) y\""
+  -- The gfm writer drops the info string @text@ (pandoc 3.12.1).
+  let rejectedCell = mdCell "\"```text\\nx\\n```\""
   check "notebook: a rejected cell is kept, the others formatted" $
     case formatNb True (nb [mdCell "\"_a_\"", code, rejectedCell] "{}") of
       Right r -> resultBytes r == nb [mdCell "\"*a*\"", code, rejectedCell] "{}" && map failWhere (resultKept r) == ["cell 3"]
