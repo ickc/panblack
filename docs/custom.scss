@@ -1,0 +1,32 @@
+/*-- scss:defaults --*/
+
+// TeX Gyre Schola — the @font-face comes from font.kolen.dev, linked in _quarto.yml
+$font-family-base: 'TeX Gyre Schola', Georgia, 'Times New Roman', serif;
+$headings-font-family: $font-family-base;
+$font-family-monospace: 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace;
+$line-height-base: 1.45;
+$font-size-base: 1.0625rem; // ~17px — Butterick recommends ≥ 15–16px
+
+/*-- scss:rules --*/
+
+// Constrain line length for readability (Butterick: 45–90 chars, aim ~65–72)
+.page-columns .column-body,
+#quarto-content article {
+  max-width: 72ch;
+}
+
+// Improve paragraph rhythm
+p {
+  hyphens: auto;
+  text-align: justify;
+}
+
+// Definition lists
+dl dt {
+  font-weight: bold;
+}
+
+// Code inline
+code {
+  font-size: 0.9em;
+}

@@ -1,0 +1,45 @@
+project:
+  type: website
+  output-dir: _site
+  render:
+    - "**/*.md"
+
+website:
+  title: panblack
+  site-url: https://ickc.github.io/panblack/
+  description: A black-like formatter for pandoc users
+  repo-url: https://github.com/ickc/panblack
+  open-graph: true
+  navbar:
+    left:
+      - href: index.md
+        text: Home
+      - href: design.md
+        text: Design
+      - href: changelog.md
+        text: Changelog
+    right:
+      - icon: github
+        href: https://github.com/ickc/panblack
+        aria-label: GitHub
+  page-footer:
+    left: "© {{< copyright-year 2021 >}} Kolen Cheung · GPL-2.0-or-later"
+
+format:
+  html:
+    theme:
+      light: [flatly, custom.scss]
+      dark: [darkly, custom.scss]
+    respect-user-color-scheme: true
+    toc: true
+    toc-depth: 3
+    code-copy: true
+    code-overflow: wrap
+    # TeX Gyre Schola and JetBrains Mono, named in custom.scss, served by https://font.kolen.dev.
+    # Both preconnects are needed: the font fetches are anonymous-mode CORS and
+    # use a different connection pool from the stylesheet request.
+    include-in-header:
+      - text: |
+          <link rel="preconnect" href="https://font.kolen.dev">
+          <link rel="preconnect" href="https://font.kolen.dev" crossorigin>
+          <link rel="stylesheet" href="https://font.kolen.dev/assets/faces.css">
