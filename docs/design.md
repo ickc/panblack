@@ -212,7 +212,7 @@ With the [Normalizations] below added and `smart` off, the same settings give **
 
 ## Normalizations
 
-A normalization is applied to the AST right after every read, on the original and on the formatted source alike. So the checks compare normalized documents, and the formatted source is written from a normalized AST. Each one gives up pandoc-relative equality for something that is, in practice, an accident of the source or of the writer: the html of your own pandoc run can change in the stated way. Each is a separate option, listed by name in a profile's `normalize:` key. All are on by default; `normalize: []` turns them off and gives pandoc-relative equality with no exceptions, as in 0.x (see [Migration from 0.x]). On the golden corpus (see [Plan]) with the recommended settings, they raise the accepted files from 675 to 864 of 1102. Implementation: `Panblack.Normalize`. Its output matches the Lua prototype (`haskell/experiments/normalize.lua`) byte for byte on the 24 documents of the corpus below.
+A normalization is applied to the AST right after every read, on the original and on the formatted source alike. So the checks compare normalized documents, and the formatted source is written from a normalized AST. Each one gives up pandoc-relative equality for something that is, in practice, an accident of the source or of the writer: the html of your own pandoc run can change in the stated way. Each is a separate option, listed by name in a profile's `normalize:` key. All are on by default; `normalize: []` turns them off and gives pandoc-relative equality with no exceptions, as in 0.x (see [Migration from 0.x]). On the golden corpus (see [Plan]) with the recommended settings, they raise the accepted files from 694 to 887 of 1128 (pandoc 3.12.1). Implementation: `Panblack.Normalize`. Its output matches the Lua prototype (`haskell/experiments/normalize.lua`) byte for byte on the 24 documents of the corpus below.
 
 | Normalization (`normalize:` name) | What changes in your own html | Why |
 |---|---|---|
@@ -527,7 +527,7 @@ As black does, panblack skips files it has already accepted. Implementation: `Pa
 - `--check` and `--diff` read the cache. They record only files that are unchanged and have no hooks, since they don't run hooks.
 - Not covered: the versions of the tools that hooks run (as with black and its plugins), and the other side of a jupytext pair. After upgrading ruff, say, use `--no-cache` once. Stdin is never cached.
 - Reading or writing the cache never fails a run: an unreadable cache is empty, and the file is replaced atomically. Concurrent runs may lose each other's new entries, which only costs a recheck.
-- Measured: 20 copies of this doc with the `panblack init` settings take 2.2 s at `-j1` and 0.00 s cached; the same with a hook that takes 0.2 s, 1.8 s at `-j4` and 0.00 s cached. pandoc's 1090 small `test/command` files take 0.14 s either way, so there the cache doesn't matter.
+- Measured: 20 copies of this doc with the `panblack init` settings take 2.2 s at `-j1` and 0.00 s cached; the same with a hook that takes 0.2 s, 1.8 s at `-j4` and 0.00 s cached. pandoc 3.10.2's 1090 small `test/command` files take 0.14 s either way, so there the cache doesn't matter.
 
 # Versioning
 
@@ -574,17 +574,20 @@ Expect a one-time reformat commit per project, because the pandoc version change
     - 1b. Tables (see [Tables]), in parallel with the spike. **Done** for the synthetic set; real corpora in step 2.
 2. Core and CLI for markdown: guard, config, `--check`/`--diff`. Golden tests against the 0.x oracle on real corpora, with both using the same pandoc version.
     - CLI, config and normalizations: **done**. With no normalizations, the output is byte-identical to the pandoc CLI (what 0.x runs) for every formatter option on four documents (pandoc's `testsuite.txt`, `markdown-reader-more.txt` and `MANUAL.txt`, and this doc), for `markdown`, `gfm` and `commonmark_x`. With all of them on, it is byte-identical to pandoc with the Lua prototype on the 24-document corpus.
-    - Golden tests: **done**, `haskell/golden/run.sh`. The corpus is pandoc's own markdown, fetched with `cabal get` for the pinned version: `MANUAL.txt`, the top-level `.md` files, the markdown reader tests and the 1090 `test/command/*.md` files, 1102 files in all. 0.x and 1.0 (`normalize: []`) format separate copies under three settings: the defaults; the defaults with `html`; and `wrap: preserve`, `columns: 120`, `reference-location: block` with `html`. Every file comes out byte-identical, except that 0.x drops the final newline. The accept/reject decisions agree too, although 1.0 renders checks differently (see [What a check renders]). The golden run found two differences, both fixed: the pandoc CLI expands tabs before reading, and it takes `smart`'s abbreviations from a data file.
+    - Golden tests: **done**, `haskell/golden/run.sh`. The corpus is pandoc's own markdown, fetched with `cabal get` for the pinned version: `MANUAL.txt`, the top-level `.md` files, the markdown reader tests and the `test/command/*.md` files, 1128 files in all for pandoc 3.12.1. 0.x and 1.0 (`normalize: []`) format separate copies under three settings: the defaults; the defaults with `html`; and `wrap: preserve`, `columns: 120`, `reference-location: block` with `html`. Every file comes out byte-identical, except that 0.x drops the final newline. The accept/reject decisions agree too, although 1.0 renders checks differently (see [What a check renders]). The golden run found two differences, both fixed: the pandoc CLI expands tabs before reading, and it takes `smart`'s abbreviations from a data file.
 3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [ipynb] and [External hooks]). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that formatting the text side of a pair needs `jupytext --update` rather than `--sync`, and no jupytext YAML header (see [Alternative: format the text side]).
 4. Settle the open questions, then freeze the config schema.
     - A cache, as black has: **done** (see [Cache]). Runs are already fast (0.06 s for one notebook, 0.5 s for 137, of which about 0.04 s is start-up), so a daemon wouldn't buy much; the cost worth saving is re-running hooks such as jupytext and ruff, and large documents, on files that haven't changed. Watching files is left to tools such as `watchexec`.
 5. Python `v0.2.0` tag: `export-config` and the deprecation notice. **Done**, tagged on `main` (`src/panblack/export.py`); the Python code is removed from this branch. On the author's wiki config (three profiles, one ipynb with a spelled-out extension list), the exported config loads in 1.0, formats, and settles; the cell format comes out as `markdown+autolink_bare_uris+east_asian_line_breaks-latex_macros-raw_attribute-table_attributes`, the flavour the list was written to mimic, plus `table_attributes`, which pandoc added later.
 6. panblack 1.0: Hackage (see [Publishing]), feedstock packaging, binaries, pre-commit hook. Migrate the dependent projects.
+    - Binaries: **done**, built by CI for every platform and attached to GitHub releases (see [Publishing]).
 7. The wasm build and the editor integration.
+    - wasm build: **done**, `panblack.wasm` and `panblack-lite.wasm` (see [wasm builds]).
+    - Editor integration: not started.
 
 ## Running the 0.x oracle
 
-0.x is tagged `v0.2.0`. It works with Python 3.12 to 3.14 and pandoc 3.10.2 with no code changes. For the golden tests, install it on its own:
+0.x is tagged `v0.2.0`. It works with Python 3.12 to 3.14 and pandoc 3.10.2 to 3.12.1 with no code changes. For the golden tests, install it on its own:
 
 ```bash
 uv tool install git+https://github.com/ickc/panblack@v0.2.0   # or a worktree of the tag
@@ -614,7 +617,7 @@ The name `panblack` is currently free on Hackage.
 2. A new account can't upload yet. Ask to join the *uploaders* group, either by getting two existing uploaders to endorse you (the confirmation email explains how) or by emailing <hackage-trustees@haskell.org> with your Hackage username and a link to the package's public repository (<https://github.com/ickc/panblack>). Do this after the repository is public.
 3. Create an API token under your account settings on Hackage, and use it for uploads instead of your password.
 4. Toolchain: install `ghcup`, then GHC and cabal through it. The feedstock's pinned GHC is what matters for releases; locally, match its version.
-5. CI (`.github/workflows/build.yml`, mirroring the pandoc-forge feedstock) builds and runs `cabal test` on every push to `main` and pull request: static musl binaries for linux-64 and linux-aarch64, osx-64, osx-arm64, win-64, and `panblack.wasm`. The archives are workflow artifacts, and publishing a GitHub release `vX` attaches them to it (the tag must match the cabal version). Toolchains are pinned in `pins.env`.
+5. CI (`.github/workflows/build.yml`, mirroring the pandoc-forge feedstock) builds and runs `cabal test` on every push to `main` and pull request: static musl binaries for linux-64 and linux-aarch64, osx-64, osx-arm64, win-64, plus `panblack.wasm` and `panblack-lite.wasm`. The archives are workflow artifacts, and publishing a GitHub release `vX` attaches them to it (the tag must match the cabal version). Toolchains are pinned in `pins.env`.
 
 ## Each release
 
