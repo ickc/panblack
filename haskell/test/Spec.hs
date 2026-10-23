@@ -97,7 +97,7 @@ main = do
       perFormat =
         "Left.\n\n```{=html}\n<div style=\"text-align: right\">\n```\n\n```{=latex}\n\\begin{flushright}\n```\n\n\
         \Signed.\n\n```{=latex}\n\\end{flushright}\n```\n\n```{=html}\n</div>\n```\n\n\
-        \In `<span style=\"float: right\">`{=html}`\\hfill`{=latex}line`</span>`{=html}.\n"
+        \In `<span style=\"float: right\">`{=html}`\\hfill{}`{=latex}line`</span>`{=html}.\n"
   check "raw per format: rejected with the recommended writer" $
     failedChecks (format (rawProfile "-raw_attribute" ["html", "latex"]) perFormat) == ["source", "html", "latex"]
   check "raw per format: rejected with raw_attribute alone" $
@@ -107,7 +107,7 @@ main = do
       == Just
         "Left.\n\n```{=html}\n<div style=\"text-align: right\">\n```\n```{=latex}\n\\begin{flushright}\n```\n\
         \Signed.\n\n```{=latex}\n\\end{flushright}\n```\n```{=html}\n</div>\n```\n\
-        \In `<span style=\"float: right\">`{=html}`\\hfill`{=latex}line`</span>`{=html}.\n"
+        \In `<span style=\"float: right\">`{=html}`\\hfill{}`{=latex}line`</span>`{=html}.\n"
   -- A known gap: raw content for a format no check renders is dropped and
   -- accepted (docs/guide/markdown.md, "raw_attribute in to only").
   check "raw typst: dropped by the recommended writer, unseen by html" $

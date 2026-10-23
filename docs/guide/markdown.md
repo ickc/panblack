@@ -84,7 +84,7 @@ Signed, the author.
 </div>
 ```
 
-Inline: `<span style="float: right">`{=html}`\hfill`{=latex}right`</span>`{=html}.
+Inline: `<span style="float: right">`{=html}`\hfill{}`{=latex}right`</span>`{=html}.
 ````
 
 **Without `raw_attribute` in `to`** (the recommended setting), the first source keeps its HTML and TeX as typed. But the writer has no way to write the typst, and drops it:
@@ -95,7 +95,7 @@ Press <kbd>Ctrl</kbd> to cite \cite{knuth}.
 Inline here.
 ```
 
-and the file is **accepted**: the raw typst renders as nothing in html, so the `html` check can't see it go, and the result is stable. Only a check that renders typst sees it (`check: [source, html, typst]` rejects the file instead). The second source is written natively, `<div style="text-align: right">` directly followed by `\begin{flushright}`. Read back, that is a different document: the TeX environment now swallows "Signed, the author.", and `\hfill` runs into the following word as `\hfillright`. The checks see the html lose the text, so the file is **rejected**, left as it was. Safe, but it is never formatted.
+and the file is **accepted**: the raw typst renders as nothing in html, so the `html` check can't see it go, and the result is stable. Only a check that renders typst sees it (`check: [source, html, typst]` rejects the file instead). The second source is written natively, `<div style="text-align: right">` directly followed by `\begin{flushright}`. Read back, that is a different document: the TeX environment now swallows "Signed, the author.", which disappears from the html. (The inline selectors are written natively too, as `<span style="float: right">\hfill{}right</span>`, which reads back as a span, so even the latex changes.) The checks see the html lose the text, so the file is **rejected**, left as it was. Safe, but it is never formatted.
 
 **With `raw_attribute` in `to`** (pandoc's default), the typst is kept, and native inline HTML and TeX are rewritten in the attribute form:
 
