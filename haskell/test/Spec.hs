@@ -104,6 +104,11 @@ main = do
       texOnly = "```{=latex}\n\\begin{flushright}\n```\n\nSigned.\n\n```{=latex}\n\\end{flushright}\n```\n"
   check "raw native: typed html and tex kept, typst kept" $
     textOf (format (rawProfile RawNative) typed) == Just typed
+  check "raw native: typed html and tex kept even with raw_attribute in to" $
+    textOf (format (rawProfileFor recommendedFrom recommendedFrom RawNative) typed) == Just typed
+  check "raw native: commonmark_x keeps typed html inline even with raw_attribute in to" $
+    textOf (format (rawProfileFor "commonmark_x-smart" "commonmark_x-smart" RawNative) "Press <kbd>Ctrl</kbd>.\n")
+      == Just "Press <kbd>Ctrl</kbd>.\n"
   check "raw native: unbalanced tex environments kept in the attribute form" $
     textOf (format (rawProfile RawNative) texOnly) == Just texOnly
   -- The html fragment is written natively and reads back as a div, which

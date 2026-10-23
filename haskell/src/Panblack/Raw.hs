@@ -91,7 +91,10 @@ rawWriting syntax from to profile = runPure $ do
         _ -> False
       keep f t = not (native f) || f == Format "latex" || unbalancedTex f t
       write = profileWrite profile
-      spell pick = write . attributeWhere pick
+      -- With @raw_attribute@ in @to@, the writer puts every raw inline in
+      -- the attribute form, so the ones meant to be native are spelled out
+      -- too.
+      spell pick = write . attributeWhere (on Ext_raw_attribute) pick
       auto doc
         | null originals = write doc
         | otherwise = go 1 Set.empty
@@ -150,15 +153,19 @@ raws doc = query block doc <> query inline doc
     | otherwise = let Format n = f in n
 
 -- | Write the raw elements chosen by index (as numbered by 'raws') in the
--- attribute form.
-attributeWhere :: (Int -> Either Block Inline -> Bool) -> Pandoc -> Pandoc
-attributeWhere pick doc = flip evalState 0 . walkM inline $ flip evalState 0 (walkM block doc)
+-- attribute form, and, if asked, the other raw inlines natively.
+attributeWhere :: Bool -> (Int -> Either Block Inline -> Bool) -> Pandoc -> Pandoc
+attributeWhere nativeInlines pick doc = flip evalState 0 . walkM inline $ flip evalState 0 (walkM block doc)
  where
   nBlocks = length [() | RawBlock _ _ <- query (: []) doc]
   block b@(RawBlock f t) = state $ \k -> (if pick k (Left b) then RawBlock "markdown" (fencedBlock f t) else b, k + 1)
   block b = pure b
-  inline i@(RawInline f t) = state $ \k -> (if pick (nBlocks + k) (Right i) then RawInline "markdown" (attributeInline f t) else i, k + 1)
+  inline i@(RawInline f t) = state $ \k -> (spellInline (pick (nBlocks + k) (Right i)) i f t, k + 1)
   inline i = pure i
+  spellInline attribute i f t
+    | attribute = RawInline "markdown" (attributeInline f t)
+    | nativeInlines = RawInline "markdown" t
+    | otherwise = i
 
 attributeInline :: Format -> Text -> Text
 attributeInline (Format f) t = fence <> t <> fence <> "{=" <> f <> "}"
