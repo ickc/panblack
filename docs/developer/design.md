@@ -30,7 +30,7 @@ else                                          -> reject, report the failed check
 
 Compared with 0.x (1 + 2N pandoc processes, each re-parsing), this parses twice, writes once, and runs the checks only when the fast path fails. Implementation: `Panblack.Guard`, in `PandocPure`.
 
-**The fast path, measured.** With CI's build of `c54891c` (`panblack --no-cache -v`, whose report says when the checks, rather than AST equality, accepted a reformatted file), on the golden corpus (1128 files of pandoc 3.12.1's own markdown) and on the author's blog (68 posts written for pandoc through Quarto, never formatted):
+**The fast path, measured.** With CI's build of `c54891c` (`panblack --no-cache -v`, whose report says when the checks, rather than AST equality, accepted a reformatted file), on the golden corpus (1128 files of pandoc 3.12.1's own markdown), and with the current build on Quarto's documentation (552 pages, described with the test corpora under [Licence](#licence)):
 
 | Corpus | Settings | Accepted | AST-equal | via the checks | Rejected (failed checks) |
 |---|---|---|---|---|---|
@@ -39,13 +39,13 @@ Compared with 0.x (1 + 2N pandoc processes, each re-parsing), this parses twice,
 | pandoc | `panblack init` | 887 | 887 | 0 | 241 (240 html, 1 both) |
 | pandoc | `panblack init`, `check: [source]` | 1126 | 886 | 240 | 1 |
 | pandoc | `panblack init`, `wrap: auto` | 886 | 850 | 36 | 242 |
-| blog | `panblack init` | 43 | 43 | 0 | 25 (20 html, 4 both, 1 source) |
-| blog | `panblack init`, `wrap: auto` | 41 | 1 | 40 | 27 |
+| Quarto | `panblack init` | 510 | 507 | 3 | 42 (34 html, 8 both) |
+| Quarto | `panblack init`, `wrap: auto` | 510 | 130 | 380 | 42 (33 html, 9 both) |
 
 What it shows (written up for users in [Core philosophy](../guide/philosophy.md#when-the-ast-doesnt-change-and-when-it-does)):
 
-- Accepting a changed AST is what `wrap: auto` depends on: all 33 files of the second row are reflows (`SoftBreak` and `Space` swapped), and on the blog 40 of 41.
-- With `wrap: preserve` and the normalizations, an AST change is always an output change on these corpora: no file is accepted through the checks, and the 240 that `source` alone accepts are all html failures.
+- Accepting a changed AST is what `wrap: auto` depends on: all 33 files of the second row are reflows (`SoftBreak` and `Space` swapped), and on Quarto's pages 377 of the 380 (the other 3 are those of the next point).
+- With `wrap: preserve` and the normalizations, an AST change is always an output change on pandoc's corpus: no file is accepted through the checks, and the 240 that `source` alone accepts are all html failures. On Quarto's, 3 are: each holds an `{=html}` inline that `raw: native` writes natively, which reads back as two raw elements (`raw: auto` keeps it as typed).
 - In the steady state (a second run over the formatted corpus), every accepted file is unchanged, which is AST-equal trivially.
 
 **A wrap-insensitive fast path: measured, not adopted.** The recommended settings already include the five [normalizations](../guide/markdown.md#normalizations), which change what is accepted. A different kind would apply only to the two ASTs compared for the fast path, so it could only skip rendering the checks, never change what is accepted. The one that matters is wrapping: with `wrap: auto`, nearly every file is accepted through the checks, because reflowing swaps `SoftBreak` and `Space`. Measured with a build whose fast path compares the ASTs with every `SoftBreak` replaced by `Space` (same corpora, `panblack init` with `wrap: auto`, `--no-cache -j1`):
@@ -53,11 +53,11 @@ What it shows (written up for users in [Core philosophy](../guide/philosophy.md#
 | Corpus | Accepted via the checks | of those, equal with soft breaks as spaces | Rejected files equal so | Time, current → relaxed |
 |---|---|---|---|---|
 | pandoc | 36 | 36 | 0 | 6.2 s → 6.2 s |
-| blog | 40 | 40 | 0 | 3.1 s → 2.6 s |
+| Quarto | 380 | 377 | 0 | 6.6 s → 4.5 s |
 
-So reflowing is the only AST change those files had, and the relaxed fast path would decide exactly as the checks do. It isn't adopted:
+So reflowing is the only AST change nearly all those files had, and the relaxed fast path would decide exactly as the checks do. It isn't adopted:
 
-- It saves time only the first time a file is reflowed: about a sixth on the blog, nothing measurable on pandoc's corpus. Afterwards a file is unchanged, or skipped by the cache.
+- It saves time only the first time a file is reflowed: about a third on Quarto's pages, nothing measurable on pandoc's corpus. Afterwards a file is unchanged, or skipped by the cache.
 - It is sound only if every check renders a soft break and a space alike. The targets do, since they render with wrapping off, but the `source` check renders with the profile's writer, and under `wrap: preserve` a soft break is a line break. The guard would have to know how each check wraps, which ties the format-independent guard to writer options for a small gain.
 
 Merging adjacent `Str` elements, the other candidate, finds nothing: every file accepted through the checks differs by soft breaks.
@@ -236,33 +236,34 @@ The user-facing side is [Advanced: raw content](../guide/markdown.md#raw-content
 | `to: …-raw_html-raw_tex` | everything typed natively is rewritten, comments included |
 | `from: …-raw_attribute` | the reader no longer parses the attribute form: fences become inline code, and the guard, reading both sides the same way, accepts it. The only setting that damages what every output shows. |
 
-**The mechanism.** The writer copies a raw element of format `markdown` out verbatim (`nest 0` keeps its blank lines), in both the markdown and the CommonMark variant. So panblack can choose the syntax per element: an element to be written in the attribute form becomes a raw `markdown` element holding `` `…`{=fmt} `` or a fenced block followed by a blank line. The fence is one backtick longer than the longest run in the content, at least 3 for blocks.
+**The mechanism.** The writer copies a raw element of format `markdown` out verbatim (`nest 0` keeps its blank lines), in both the markdown and the CommonMark variant. So panblack can choose the syntax per element: an element to be written in the attribute form becomes a raw `markdown` element holding `` `…`{=fmt} `` or a fenced block followed by a blank line. When `to` has `raw_attribute`, the writer puts every raw inline in the attribute form, so the inlines meant to be native become raw `markdown` elements holding their text. The fence is one backtick longer than the longest run in the content, at least 3 for blocks.
 
-**The policies, measured** with checks `[source, html, latex]`, the recommended settings, `--no-cache -j1`, on the golden corpus (1128 files) and the author's blog (68 posts), read as pandoc markdown and as `commonmark_x-smart` (the blog and corpus aren't written for CommonMark, so the second is a stress test):
+**The policies, measured** with checks `[source, html, latex]`, the recommended settings, `--no-cache -j1`, on the golden corpus (1128 files) and Quarto's documentation (552 pages), read as pandoc markdown and as `commonmark_x-smart` (neither is written for CommonMark, so the second is a stress test). Quarto's with the current build:
 
-| Flavour | `raw:` | pandoc corpus accepted | time | blog accepted | time | native elements rewritten (blog) |
+| Flavour | `raw:` | pandoc corpus accepted | time | Quarto accepted | time | native elements rewritten (Quarto) |
 |---|---|---|---|---|---|---|
-| markdown | `native` | 887 | 4.7 s | 43 | 2.7 s | 0 |
-| markdown | `attribute` | 883 | 8.1 s | 47 | 2.7 s | 38 |
-| markdown | `auto` | 887 | 5.9 s | 48 | 2.9 s | 0 |
-| commonmark_x | `native` | 886 | 7.8 s | 66 | 1.7 s | 0 |
-| commonmark_x | `attribute` | 886 | 8.0 s | 67 | 1.3 s | – |
-| commonmark_x | `auto` | 886 | 11.1 s | 67 | 1.5 s | 0 |
+| markdown | `native` | 887 | 4.7 s | 510 | 5.0 s | 0 |
+| markdown | `attribute` | 883 | 8.1 s | 516 | 4.7 s | 226 |
+| markdown | `auto` | 887 | 5.9 s | 516 | 5.2 s | 0 |
+| commonmark_x | `native` | 886 | 7.8 s | 512 | 4.0 s | 1 |
+| commonmark_x | `attribute` | 886 | 8.0 s | 513 | 3.9 s | 222 |
+| commonmark_x | `auto` | 886 | 11.1 s | 513 | 4.2 s | 1 |
 
-- `auto` accepts every file `native` does, with the same output, plus 5 blog posts. All 5 use `{=html}` blocks to stop pandoc from reading their `<div>`, `<noscript>` or `<video>` as markdown.
-- On pandoc markdown, the fixed rules of `native` (below) don't recover those 5. Telling an HTML fragment that reads back as something else from one that doesn't takes a reread.
+- `auto` accepts every file `native` does, with the same output except in 3 files, where it keeps an `{=html}` inline as typed. It accepts 6 more pages, all with `{=html}` or `{=tex}` blocks that, written natively, read back as something else: an `<iframe>` inside a div is split in two, a `<div>` opens a div.
+- On pandoc markdown, the fixed rules of `native` (below) don't recover those 6. Telling an HTML fragment that reads back as something else from one that doesn't takes a reread.
 - In CommonMark, native HTML blocks end at a blank line, which the writer puts after them, so they read back intact, and `native` is enough. The one rule it needs: the writer removes blank lines inside a native HTML block (`removeBlankLinesInHTML`), so a block that contains one goes in the attribute form.
+- The one native element `native` and `auto` rewrite in CommonMark is an HTML block holding a blank line (the rule below).
 - The slowest file is pandoc's 1.3 MB `changelog.md` read as `commonmark_x`: 9.6 s with `auto`, 5.7 s with `native`.
 
 **Rules every policy but `attribute` and `pandoc` applies**, as they need no reread: formats the writer has no native syntax for; `latex` elements (native TeX reads as `tex`, so a `latex` element was typed in the attribute form; HTML has no such tell); TeX whose `\begin`/`\end` don't balance; in CommonMark, HTML blocks containing a blank line.
 
-**`auto`'s rounds.** Each round writes the file, reads it back, aligns the raw elements read back with the original ones as `diff` aligns lines (the `Diff` library, already used for `--diff`), and switches every original element without a match to the attribute form. One round fixes all the elements that fail on their own; a second is needed only when fixing one exposes another, e.g. a TeX block that had swallowed it. Rounds needed: 19 files took one and none took more on pandoc's corpus as pandoc markdown; on the blog 12 took one and 5 took two; a file with 400 `{=html}` fragments took two, in 0.07 s. The limit is 10 rounds, then every raw block in the attribute form, then everything.
+**`auto`'s rounds.** Each round writes the file, reads it back, aligns the raw elements read back with the original ones as `diff` aligns lines (the `Diff` library, already used for `--diff`), and switches every original element without a match to the attribute form. One round fixes all the elements that fail on their own; a second is needed only when fixing one exposes another, e.g. a TeX block that had swallowed it. Rounds needed: 19 files took one and none took more on pandoc's corpus as pandoc markdown; on Quarto's pages 70 took one and 15 two as pandoc markdown, 81 and 7 as `commonmark_x`; a file with 400 `{=html}` fragments took two, in 0.07 s. The limit is 10 rounds, then every raw block in the attribute form, then everything.
 
 **Rejected designs:**
 
 - Testing each element alone (write it, read it back alone): no faster on these corpora (7.6 s on pandoc's corpus), since every raw inline is tested, and it misses context, such as a TeX environment swallowing the next paragraph.
-- One fallback straight to every raw block in the attribute form: the same acceptance as `auto`, but it rewrites 27 native elements in the 5 posts.
-- Fixing the first differing element per round, the first version of `auto`: the same output on the blog, but one whole-file round per element, so a file with many fragments costs quadratic time (pandoc's changelog as `commonmark_x`: 43 s), and a cap on rounds then trades faithfulness for time (a cap of 2 rewrote 14 native elements on the blog, 4 rewrote 2, 8 none).
+- One fallback straight to every raw block in the attribute form: the same acceptance as `auto`, but it also rewrites the native blocks that read back fine, in every file that needs any fixed.
+- Fixing the first differing element per round, the first version of `auto`: the same output on Quarto's pages, but one whole-file round per element, so a file with many fragments costs quadratic time (pandoc's changelog as `commonmark_x`: 43 s), and a cap on rounds then trades faithfulness for time (on Quarto's pages, a cap of 2 rewrote 18 native elements, 4 and 8 none).
 
 **Default `native`**: the corpus results are those of the old recommendation, at no cost, and raw content is no longer dropped silently. `auto` is opt-in because of its cost and because only pandoc markdown needs it. `pandoc` reproduces 0.x: on the golden corpus with `normalize: []`, `raw: pandoc` gives files byte-identical to the build before `Panblack.Raw` under all three golden settings; `golden/run.sh` uses it.
 
@@ -336,7 +337,7 @@ Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for is
     $ printf '```text\nx\n```\n' | pandoc -f gfm -t gfm       # ```
     ```
 
-9. **An empty div is dropped.** A div with no content, such as the `::: {#refs}` placeholder that says where citeproc puts the bibliography, isn't written at all, so it reads back as nothing. Found on the author's blog, where it gets 20 of 68 posts rejected. Checked with pandoc 3.10.2; panblack's 3.12.1 rejects the same posts.
+9. **An empty div is dropped.** A div with no content, such as the `::: {#refs}` placeholder that says where citeproc puts the bibliography, isn't written at all, so it reads back as nothing. Checked with pandoc 3.10.2 and 3.12.1.
 
     ```
     $ printf 'Text.\n\n::: {#refs}\n:::\n' | pandoc -t markdown    # Text.
@@ -388,7 +389,7 @@ panblack 1.0 is distributed in two ways:
 
 GPL-2.0-or-later, as pandoc, laid out as pandoc does: `COPYRIGHT` holds the notice and the exceptions, `COPYING.md` the licence text (the cabal package in `haskell/` links to both). pandoc is GPL-2.0-or-later and every panblack binary bundles it, so distributed binaries were covered by the GPL anyway; with the source under the same licence there is no split, and the repository can include pandoc-derived material. 0.x keeps BSD-3: its releases, `v0.2.0` the last, are tagged on `main`, and the move to the GPL comes with the rewrite. The exception is `haskell/wasm/patches`, MIT, copied from pandoc.
 
-Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.12.1`), not copied into the repository. That keeps them in step with the pinned version whatever the licence.
+Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.12.1`), not copied into the repository. That keeps them in step with the pinned version whatever the licence. Some measurements also use Quarto's documentation, the `.qmd` pages of [quarto-web](https://github.com/quarto-dev/quarto-web) at commit `ecf8316` (renamed to `.md`, flattened into one directory), as a public corpus written for pandoc but never formatted by its writer. Quarto's own syntax isn't pandoc's: the writer escapes shortcodes (`{{< include x.md >}}` becomes `{{\< include x.md \>}}`), which pandoc's own output doesn't show, so these pages test the guard, not formatting Quarto projects.
 
 # Plan
 
@@ -401,7 +402,7 @@ Test corpora come from pandoc itself (the markdown files under `test/`, and `MAN
 3. ipynb: pair detection and cell-level formatting, plus hooks. **Done** (see [Formatting notebooks](../guide/notebooks.md)). Tested on 137 real notebooks and end to end with jupytext and ruff. This showed that formatting the text side of a pair needs `jupytext --update` rather than `--sync`, and no jupytext YAML header.
 4. Settle the open questions, then freeze the config schema.
     - A cache, as black has: **done** (see [Cache](#cache)).
-5. Python `v0.2.0` tag: `export-config` and the deprecation notice. **Done**, tagged on `main`; the Python code is removed from `main` after it. On the author's wiki config the exported config loads in 1.0, formats, and settles.
+5. Python `v0.2.0` tag: `export-config` and the deprecation notice. **Done**, tagged on `main`; the Python code is removed from `main` after it. Tested on a real 0.x config (three profiles, one for notebooks): the exported config loads in 1.0, formats, and settles.
 6. panblack 1.0: Hackage (see [Development](development.md#releasing)), feedstock packaging, binaries, pre-commit hook. Migrate the dependent projects.
     - Binaries: **done**, built by CI for every platform and attached to GitHub releases.
 7. The wasm build and the editor integration.
@@ -417,7 +418,7 @@ Each question has a provisional choice that the implementation builds on; the ev
 | Normalizations: option names, defaults, how to turn them off | settled: a `normalize:` list, all on by default (author's decision, 2026-10-23), `[]` for none; see [Normalizations](../guide/markdown.md#normalizations) | done |
 | How raw content is written back, given that the AST doesn't record which syntax was typed | settled: `raw: native` by default, `attribute` and `auto` opt-in, `pandoc` for 0.x (see [Raw content: the evidence](#raw-content-the-evidence)) | done |
 | ipynb: partial formatting and the whole-notebook check (see [How a notebook is formatted](../guide/notebooks.md#how-a-notebook-is-formatted)). Three things to revisit: a notebook paired with a markdown file that nothing renders as one document (e.g. kept only for diffs) is still rejected for footnotes numbered across cells, which may call for `ipynb.whole-notebook-check: never`; without the check, a cell holding only a link reference definition becomes empty, which is faithful per cell but deletes what the author wrote, so it might be rejected instead; and a partly reformatted file exits 2 on every run until its kept cells are fixed by hand | per cell, keep rejected cells; whole-notebook check only when paired with markdown | usage |
-| AST normalization before comparing (speed only) | settled: not adopted; with `wrap: preserve` every accepted file takes the fast path, and with `wrap: auto` a soft-break-insensitive comparison saves a sixth of the first run at the cost of coupling the guard to writer options (see [Guard algorithm](#guard-algorithm)) | golden corpus and blog, done |
+| AST normalization before comparing (speed only) | settled: not adopted; with `wrap: preserve` nearly every accepted file takes the fast path, and with `wrap: auto` a soft-break-insensitive comparison saves up to a third of the first run at the cost of coupling the guard to writer options (see [Guard algorithm](#guard-algorithm)) | golden corpus and Quarto's docs, done |
 | Default table settings | grid and pipe tables only, `wrap: preserve`, widths reset (see [Formatting markdown](../guide/markdown.md#only-grid-and-pipe-tables)) | step 2 corpora |
 | wasm tiers | settled: one tier, `md+html` | spike (step 1), done |
 | `excludes` regex or globs, and `.gitignore` | settled: gitignore-style globs, on top of git's own list of files | author, done |

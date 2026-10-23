@@ -46,6 +46,6 @@ Other differences in behaviour:
 
 0.x deleted jupytext's `encoding` metadata key by default, because pandoc 2.x's ipynb writer escaped metadata strings as markdown on every round trip: `# -*- coding: utf-8 -*-` became `\# -\*- coding: utf-8 -\*-`, then `\\\# ...`, so 0.x's stability check always failed on a notebook with that key (checked with pandoc 2.16.2, current when 0.x added the option in December 2021). jupytext stores the key when it reads a `.py` file with a coding line. 1.0 doesn't pass metadata through pandoc at all, so the option has nothing left to do.
 
-# The example: the author's wiki
+# An example
 
-On the author's wiki config (three profiles, one ipynb profile with a spelled-out extension list), the exported config loads in 1.0, formats, and settles. Its notebook cell format comes out as `markdown+autolink_bare_uris+east_asian_line_breaks-latex_macros-raw_attribute-table_attributes`: the flavour the list was written to mimic, plus `table_attributes`, which pandoc added later.
+A 0.x config with three profiles, one of them an ipynb profile with a spelled-out extension list, exports to a config that loads in 1.0, formats, and settles. Its notebook cell format comes out as `markdown+autolink_bare_uris+east_asian_line_breaks-latex_macros-raw_attribute-table_attributes`: the flavour the list was written to mimic, plus `table_attributes`, which pandoc added later.

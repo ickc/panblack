@@ -84,7 +84,7 @@ If you edit the text side of a pair rather than the notebook, format it with a [
 
 # On real notebooks
 
-Run on 137 distinct notebooks (tutorials, course material, blog posts) with `check: [source, html]` and `wrap: preserve`, panblack took 0.5 s in all. 61 were reformatted and 63 were already formatted. 11 were partly reformatted, keeping 14 cells, all rightly:
+Run on 137 distinct notebooks (tutorials, course material and others) with `check: [source, html]` and `wrap: preserve`, panblack took 0.5 s in all. 61 were reformatted and 63 were already formatted. 11 were partly reformatted, keeping 14 cells, all rightly:
 
 - 9 (copies of one tutorial): display math spanning lines, which pandoc reads differently after formatting.
 - 1: `\\(\sigma\\)` in three cells, which the commonmark writer wrote without the parentheses (fixed in pandoc 3.12).

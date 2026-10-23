@@ -24,7 +24,7 @@ digraph pandoc {
         style=rounded; color=gray60;
         node [fillcolor=lightgreen];
         out_etc [label="…", shape=plaintext, style=""];
-        out_latex [label="latex"];
+        out_latex [label="LaTeX"];
         out_html [label="html"];
         out_md [label="markdown"];
     }

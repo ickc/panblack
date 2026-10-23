@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Screenshot a page of the rendered docs site (docs/_site), to check a visual
-# change rather than guess at it. Adapted from blog.kolen.dev's bin/screenshot.sh.
+# change rather than guess at it.
 #
 #   scripts/screenshot.sh <path-under-_site> <out.png>
 #

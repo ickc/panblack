@@ -7,7 +7,7 @@ panblack is an opinionated formatter for markdown and Jupyter notebooks, in the 
 
 ![](media/dot/guarantee.svg){fig-alt="Your source x is parsed and rendered to y. The formatted source x′ is parsed and rendered to y′. panblack writes x′ only if y and y′ are equal." width=100%}
 
-pandoc can rewrite markdown into markdown, but it is a converter, not a formatter: its reader keeps only what its own model of a document can hold, so a round trip can lose things. panblack makes it safe by judging the result rather than the round trip. If your markdown becomes html and latex, the formatted markdown must give the same html and the same latex, or panblack leaves the file alone. [Core philosophy](guide/philosophy.md) explains the idea in three pictures.
+pandoc can rewrite markdown into markdown, but it is a converter, not a formatter: its reader keeps only what its own model of a document can hold, so a round trip can lose things. panblack makes it safe by judging the result rather than the round trip. If your markdown becomes html and LaTeX, the formatted markdown must give the same html and the same LaTeX, or panblack leaves the file alone. [Core philosophy](guide/philosophy.md) explains the idea in three pictures.
 
 # Is it for you?
 
