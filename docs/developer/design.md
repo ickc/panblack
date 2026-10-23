@@ -225,7 +225,7 @@ Potential problems considered for the table-cell normalization: a cell with a pa
 
 # Upstream issues
 
-Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for issues and patches. Rechecked with pandoc 3.12.1: all but 7 still reproduce. 9 was found later, on 3.12.1. Known limitations that are *not* listed: the alignment of simple tables, pipe tables padded past `columns`, and bare text in divs.
+Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for issues and patches. Rechecked with pandoc 3.12.1: all but 7 still reproduce. 9 and 10 were found later, on 3.12.1. Known limitations that are *not* listed: the alignment of simple tables, pipe tables padded past `columns`, and bare text in divs.
 
 1. **Table cells get raw line breaks with `--wrap=preserve`.** A cell whose text contains a soft line break is written with the newline inside the row. For simple tables (the default choice) the continuation becomes a new row; for pipe tables the row is invalid. With `--wrap=auto` it becomes a space, as it should here too. Reproduction: `haskell/experiments/softbreak-in-cell.native`, a two-column table with widths at their defaults and one cell `wrapped⏎text`:
 
@@ -297,6 +297,26 @@ Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for is
     $ printf 'Text.\n\n::: {#refs}\n:::\n' | pandoc -t markdown    # Text.
     ```
 
+10. **Raw HTML and TeX blocks are written natively, even when that reads back as something else.** The markdown writer chooses the syntax for raw content differently for inlines and blocks. A `RawInline` is written in the attribute form whenever `raw_attribute` is on (`Writers/Markdown/Inline.hs`, `RawInline` case), but a `RawBlock` of HTML or TeX is written natively whenever `raw_html` / `raw_tex` is on, and uses the attribute form only otherwise (`Writers/Markdown.hs`, `blockToMarkdown'`, `RawBlock` case). Native is only safe for a fragment that reads back as the same block, and fragments are exactly what a raw block selected per output format holds. Here an unbalanced `\begin` is written natively, and read back as one TeX block that swallows the paragraph, so it disappears from the html:
+
+    ````
+    $ cat up10.md
+    ```{=latex}
+    \begin{flushright}
+    ```
+
+    Text.
+
+    ```{=latex}
+    \end{flushright}
+    ```
+    $ pandoc -t markdown up10.md | pandoc -t native
+    [ RawBlock (Format "tex") "\\begin{flushright}\n\nText.\n\n\\end{flushright}" ]
+    $ pandoc -t markdown up10.md | pandoc -t html     # (nothing; was <p>Text.</p>)
+    ````
+
+    HTML fragments fail the same way: `<div style="...">` written natively reads back as the start of a div. Natively written blocks are also not separated by a blank line, so an HTML block and a TeX block run together. Proposal: write a `RawBlock` in the attribute form whenever `raw_attribute` is on, as for inlines; or, more conservatively, whenever the native form doesn't read back as the same block. Found with [these examples](../guide/markdown.md#raw-content); panblack rejects such files rather than damaging them, so they are never formatted.
+
 # Versioning
 
 The rules are in [Development](development.md#versioning). Why the pandoc version is not in the version number (for example `3.10.2-1.0`):
@@ -349,7 +369,7 @@ Each question has a provisional choice that the implementation builds on; the ev
 
 | Question | Provisional choice | Settled by |
 |---|---|---|
-| Normalizations: option names, defaults, how to turn them off | a `normalize:` list, all on by default, `[]` for none; see [Normalizations](../guide/markdown.md#normalizations) | before freeze |
+| Normalizations: option names, defaults, how to turn them off | settled: a `normalize:` list, all on by default (author's decision, 2026-10-23), `[]` for none; see [Normalizations](../guide/markdown.md#normalizations) | done |
 | Raw content for formats other than HTML and TeX (e.g. `{=typst}`) is dropped without `raw_attribute` in `to`, and accepted unless a check renders that format (example in [Formatting markdown](../guide/markdown.md#raw-content)). No accepted file loses raw content on either corpus, and keeping `raw_attribute` changes the outcome of 4 files of 1196 (3 newly rejected, `INSTALL.md` among them, and 1 newly accepted) while rewriting native HTML and TeX as `{=html}`/`{=tex}`. | `-raw_attribute` in `to`, documented, with `-raw_html-raw_tex` for sources that select raw blocks per output format (rejected otherwise, since the writer writes raw HTML and TeX blocks natively; tracked by the unit tests). A guard-level fix for the silent drop would be an implicit check that every raw block and span survives; the format name can't simply be compared, since native TeX reads back as `tex` where `{=latex}` read as `latex`. | author |
 | ipynb: partial formatting and the whole-notebook check (see [How a notebook is formatted](../guide/notebooks.md#how-a-notebook-is-formatted)). Three things to revisit: a notebook paired with a markdown file that nothing renders as one document (e.g. kept only for diffs) is still rejected for footnotes numbered across cells, which may call for `ipynb.whole-notebook-check: never`; without the check, a cell holding only a link reference definition becomes empty, which is faithful per cell but deletes what the author wrote, so it might be rejected instead; and a partly reformatted file exits 2 on every run until its kept cells are fixed by hand | per cell, keep rejected cells; whole-notebook check only when paired with markdown | usage |
 | AST normalization before comparing (speed only) | settled: not adopted; with `wrap: preserve` every accepted file takes the fast path, and with `wrap: auto` a soft-break-insensitive comparison saves a sixth of the first run at the cost of coupling the guard to writer options (see [Guard algorithm](#guard-algorithm)) | golden corpus and blog, done |

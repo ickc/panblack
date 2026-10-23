@@ -105,7 +105,7 @@ Press `<kbd>`{=html}Ctrl`</kbd>`{=html} to cite `\cite{knuth}`{=tex}.
 
 pandoc renders this the same, but it reads worse, and other renderers (GitHub, JupyterLab, editors) show the `{=html}` literally. On pandoc's own `changelog.md` this happens in 5 places, and it gets `INSTALL.md` rejected, because a multi-line `<a ...>` tag is wrapped and reads back differently. Raw *blocks* of HTML and TeX are still written natively, so the second source is rejected as before.
 
-**With `-raw_html-raw_tex` in `to`** (and `raw_attribute` left on), the writer can only use the attribute form, so every raw element is written explicitly, blocks included. The second source survives and is accepted (pandoc's writer only drops the blank lines between consecutive raw blocks). The cost is the first source: everything native is rewritten, an HTML comment `<!-- ... -->` becomes a ```` ```{=html} ```` block, and so on. Only `to` changes, so pandoc still reads native HTML and TeX as before, in panblack and in your own runs.
+**With `-raw_html-raw_tex` in `to`** (and `raw_attribute` left on), the writer can only use the attribute form, so every raw element is written explicitly, blocks included. The second source survives and is accepted (pandoc's writer only drops the blank lines between consecutive raw blocks). Why raw blocks are treated differently from raw inlines is [upstream issue 10](../developer/design.md#upstream-issues). The cost is the first source: everything native is rewritten, an HTML comment `<!-- ... -->` becomes a ```` ```{=html} ```` block, and so on. Only `to` changes, so pandoc still reads native HTML and TeX as before, in panblack and in your own runs.
 
 | `to` | native HTML and TeX you typed | per-format raw blocks | raw content for other formats |
 |---|---|---|---|
@@ -117,7 +117,7 @@ pandoc renders this the same, but it reads worse, and other renderers (GitHub, J
 
 So: if you type HTML and TeX natively, keep the recommendation, and list a check for any other format you use raw. If you select content per output format, use `-raw_html-raw_tex`. The unit tests track the second source under all three settings.
 
-`raw_attribute` stays on in `from` either way, as in pandoc. Turned off there, a ```` ```{=latex} ```` block reads as code, and the guard would accept rewriting it as such.
+`raw_attribute` must stay on in `from`, as in your own pandoc runs. Turning it off there looks like a way to keep the attribute form exactly as typed, but the reader then no longer knows the syntax at all: a ```` ```{=latex} ```` fence isn't a valid fence any more, so it reads as inline code, and the writer writes it back on one line as `` `{=latex} \begin{flushright}` ``. The guard reads both sides the same wrong way, so it accepts this, and your own pandoc run then shows that line as literal code. It is the one setting here that damages files silently, which is why `from` must match how you run pandoc.
 
 ## Only grid and pipe tables
 
