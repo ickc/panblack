@@ -37,7 +37,7 @@ import Data.Yaml qualified as Y
 import Panblack.Guard (Check, Profile (..), sourceCheck)
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize (Normalization, normalizationByName, normalizationName, normalizing)
-import Panblack.Raw (RawSyntax (..), rawSyntaxByName, rawSyntaxName, rawWriting)
+import Panblack.Raw (RawSyntax (..), rawSyntaxByName, rawSyntaxName, rawWriterSpec, rawWriting)
 import Panblack.Target.Registry (targetByName)
 import System.FilePath ((</>))
 import System.IO qualified as IO
@@ -241,7 +241,8 @@ buildProfile = buildProfileWith targetByName
 -- registry out.
 buildProfileWith :: (Text -> Either PandocError Check) -> Settings -> [Text] -> [Normalization] -> RawSyntax -> Either PandocError Profile
 buildProfileWith target s checks ns raw = do
-  base <- rawWriting raw (setFrom s) (setTo s) . normalizing ns =<< markdownProfile (setFrom s) (setTo s) (setReader s) (setWriter s)
+  let to = rawWriterSpec raw (setFrom s) (setTo s)
+  base <- rawWriting raw (setFrom s) to . normalizing ns =<< markdownProfile (setFrom s) to (setReader s) (setWriter s)
   cs <- traverse (\c -> if c == "source" then Right (sourceCheck base) else target c) checks
   pure base {profileChecks = cs}
 
@@ -279,11 +280,9 @@ starterConfig =
     , "  # raw: native"
     , "  # An inline pandoc defaults file. Reading options must match how you run"
     , "  # pandoc, except smart and latex_macros: formatting without them keeps your"
-    , "  # text and macros as typed. Without raw_attribute, the writer keeps raw TeX"
-    , "  # and HTML as typed rather than wrapping them in `...`{=tex}."
+    , "  # text and macros as typed. `to` defaults to `from`."
     , "  pandoc:"
     , "    from: markdown-simple_tables-multiline_tables-smart-latex_macros"
-    , "    to: markdown-simple_tables-multiline_tables-smart-latex_macros-raw_attribute"
     , "    wrap: preserve"
     , "    columns: 72"
     ]

@@ -13,6 +13,7 @@ module Panblack.Raw
   , rawSyntaxName
   , rawSyntaxByName
   , rawWriting
+  , rawWriterSpec
   ) where
 
 import Control.Monad.State.Strict (evalState, state)
@@ -63,6 +64,20 @@ rawSyntaxByName name = lookup name [(rawSyntaxName r, r) | r <- [minBound .. max
 rounds :: Int
 rounds = 10
 
+-- | The writing format spec to build the profile with, given the reading
+-- and writing specs. Unless the writer is left to choose ('RawPandoc'),
+-- @raw_attribute@ is turned off in it: with it, the writer puts every raw
+-- inline in the attribute form itself, and 'rawWriting' writes that form
+-- where it is wanted.
+rawWriterSpec :: RawSyntax -> Text -> Text -> Text
+rawWriterSpec syntax from to
+  | syntax /= RawPandoc && readsAttribute = to <> "-raw_attribute"
+  | otherwise = to
+ where
+  readsAttribute = either (const False) id . runPure $ do
+    fromF <- parseFlavoredFormat from
+    extensionEnabled Ext_raw_attribute <$> applyExtensionsDiff (getExtensionsConfig (formatName fromF)) fromF
+
 -- | Spell raw content when the profile writes, given its reading and writing
 -- format specs (as for 'Panblack.Markdown.markdownProfile'). Apply it after
 -- 'Panblack.Normalize.normalizing', so that 'RawAuto' reads back as the
@@ -91,10 +106,7 @@ rawWriting syntax from to profile = runPure $ do
         _ -> False
       keep f t = not (native f) || f == Format "latex" || unbalancedTex f t
       write = profileWrite profile
-      -- With @raw_attribute@ in @to@, the writer puts every raw inline in
-      -- the attribute form, so the ones meant to be native are spelled out
-      -- too.
-      spell pick = write . attributeWhere (on Ext_raw_attribute) pick
+      spell pick = write . attributeWhere pick
       auto doc
         | null originals = write doc
         | otherwise = go 1 Set.empty
@@ -153,19 +165,15 @@ raws doc = query block doc <> query inline doc
     | otherwise = let Format n = f in n
 
 -- | Write the raw elements chosen by index (as numbered by 'raws') in the
--- attribute form, and, if asked, the other raw inlines natively.
-attributeWhere :: Bool -> (Int -> Either Block Inline -> Bool) -> Pandoc -> Pandoc
-attributeWhere nativeInlines pick doc = flip evalState 0 . walkM inline $ flip evalState 0 (walkM block doc)
+-- attribute form.
+attributeWhere :: (Int -> Either Block Inline -> Bool) -> Pandoc -> Pandoc
+attributeWhere pick doc = flip evalState 0 . walkM inline $ flip evalState 0 (walkM block doc)
  where
   nBlocks = length [() | RawBlock _ _ <- query (: []) doc]
   block b@(RawBlock f t) = state $ \k -> (if pick k (Left b) then RawBlock "markdown" (fencedBlock f t) else b, k + 1)
   block b = pure b
-  inline i@(RawInline f t) = state $ \k -> (spellInline (pick (nBlocks + k) (Right i)) i f t, k + 1)
+  inline i@(RawInline f t) = state $ \k -> (if pick (nBlocks + k) (Right i) then RawInline "markdown" (attributeInline f t) else i, k + 1)
   inline i = pure i
-  spellInline attribute i f t
-    | attribute = RawInline "markdown" (attributeInline f t)
-    | nativeInlines = RawInline "markdown" t
-    | otherwise = i
 
 attributeInline :: Format -> Text -> Text
 attributeInline (Format f) t = fence <> t <> fence <> "{=" <> f <> "}"

@@ -21,7 +21,6 @@ panblack --check                 # in CI: exit 1 if a file would change
   check: [source, html]
   pandoc:
     from: markdown-simple_tables-multiline_tables-smart-latex_macros
-    to: markdown-simple_tables-multiline_tables-smart-latex_macros-raw_attribute
     wrap: preserve
     columns: 72
 ```
@@ -44,15 +43,15 @@ With `smart` on while formatting, the writer rewrites what you typed: curly quot
 
 With it, the reader expands macros defined in the source, and the writer writes the expansion in place: after `\newcommand{\R}{\mathbb{R}}`, `$x \in \R$` becomes `$x \in \mathbb{R}$`. The html is the same, so the guard would accept it, but your macro is gone. Expanding macros is a rendering step. It has to be off when reading too, since that is where macros are expanded. Your own pandoc run with `latex_macros` is unaffected: the definitions and the math are kept as typed, so pandoc expands them the same way.
 
-## `raw_attribute` in `to` only
+## Keep `raw_attribute`
 
-Without it, the writer writes inline HTML and TeX as you typed them. With it, as `` `<kbd>`{=html}Ctrl`</kbd>`{=html} `` and `` `\cite{knuth}`{=tex} ``, which pandoc reads the same but which is harder to read, and which other renderers (GitHub, JupyterLab, editors) show literally. Raw content for formats markdown has no other syntax for, such as `{=typst}`, is written by panblack itself and kept either way. If you also use `{=html}` or `{=latex}`, see [Advanced: raw content](#raw-content).
+panblack decides itself how raw content is written back: inline HTML and TeX as you typed them, and `{=typst}` and other formats markdown has no other syntax for in the attribute form. So no setting in `to` is needed for raw content. If you also use `{=html}` or `{=latex}`, see [Advanced: raw content](#raw-content).
 
 `raw_attribute` must stay on in `from`, as in your own pandoc runs. Turning it off there looks like a way to keep the attribute form exactly as typed, but the reader then no longer knows the syntax at all: a ```` ```{=latex} ```` fence isn't a valid fence any more, so it reads as inline code, and the writer writes it back on one line as `` `{=latex} \begin{flushright}` ``. The guard reads both sides the same wrong way, so it accepts this, and your own pandoc run then shows that line as literal code. This is why `from` must match how you run pandoc.
 
 ## Only grid and pipe tables
 
-`-simple_tables-multiline_tables`, in both `from` and `to`. pandoc's table writer chooses a syntax from the column widths in the AST, and simple and multiline tables are where that round trip is least stable (see [Tables](#tables)). Grid and pipe tables are also what people mostly use. Because this is in `from` as well, simple and multiline tables in your source aren't read as tables at all (see [Known limitations](#known-limitations)): convert them first, and use the same `from` in your own pandoc runs.
+`-simple_tables-multiline_tables`, in `from` (`to` defaults to `from`, so the writer gets it too). pandoc's table writer chooses a syntax from the column widths in the AST, and simple and multiline tables are where that round trip is least stable (see [Tables](#tables)). Grid and pipe tables are also what people mostly use. Because this is in `from` as well, simple and multiline tables in your source aren't read as tables at all (see [Known limitations](#known-limitations)): convert them first, and use the same `from` in your own pandoc runs.
 
 ## `wrap: preserve`
 
@@ -74,14 +73,13 @@ The same reasoning applies to `commonmark`, `commonmark_x` and `gfm`, with fewer
 | `commonmark_x` | **on** | **on** | |
 | `gfm` | off | off | `tex_math_gfm`: the writer writes math as `` $`x`$ `` |
 
-So for `commonmark_x`, turn off `smart` as above, and `raw_attribute` in `to`, for the [same reason](#raw_attribute-in-to-only). CommonMark has no native TeX, so all raw content but HTML is written in the attribute form; and since its HTML blocks end at a blank line, which the writer puts after them, native HTML reads back intact, so the default `raw: native` keeps `{=html}` blocks working too (written as plain HTML).
+So for `commonmark_x`, turn off `smart` as above. CommonMark has no native TeX, so all raw content but HTML is written in the attribute form; and since its HTML blocks end at a blank line, which the writer puts after them, native HTML reads back intact, so the default `raw: native` keeps `{=html}` blocks working too (written as plain HTML).
 
 ```yaml
 - paths: [.]
   check: [source, html]
   pandoc:
     from: commonmark_x-smart
-    to: commonmark_x-smart-raw_attribute
     wrap: preserve
 ```
 
@@ -204,6 +202,6 @@ So:
 
 `native` and `auto` also write a few raw elements in the attribute form because they can't be written natively: `{=latex}` elements (native TeX reads as `tex`, so a `latex` element can only have been typed with the attribute, and is kept that way), TeX holding a `\begin{...}` without its `\end{...}` or the reverse (written natively, it would swallow what follows), and, in the CommonMark family, HTML blocks containing a blank line (that writer removes the blank lines).
 
-`raw: pandoc` leaves the choice to pandoc's writer, from the `to` extensions alone, as 0.x did. It exists to compare with 0.x.
+`raw: pandoc` leaves the choice to pandoc's writer, from the `to` extensions alone, as 0.x did. It exists to compare with 0.x; with it, `-raw_attribute` in `to` is what keeps typed inline HTML and TeX as typed.
 
 `raw:` only applies when `from` reads raw attributes, which `gfm` and `commonmark` don't. The measurements behind these settings are in the [design notes](../developer/design.md#raw-content-the-evidence).

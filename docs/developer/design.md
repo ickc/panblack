@@ -152,7 +152,7 @@ Further notes behind the recommendations:
 
 - **`smart`:** on the corpus, every file accepted without `smart` also renders the same html when read *with* `smart`.
 - **`latex_macros`:** on the corpus it changes nothing, because its macros are all in code blocks.
-- **`raw_attribute`:** without it in `to`, `INSTALL.md` is accepted and no file gains `{=...}`. A raw block or span for a format the markdown writer can't write natively, such as `{=typst}`, is then dropped, and the guard only sees it if a check renders that format: with `check: [source, html, latex]` such a file is accepted with the raw content deleted, while `check: [source, html, typst]` rejects it. The happy case assumes raw attributes only for TeX and HTML (see the [open question](#open-questions)).
+- **`raw_attribute`** (before `Panblack.Raw`, which now turns it off in the writer itself; see [Raw content](#raw-content-the-evidence)): without it in `to`, `INSTALL.md` is accepted and no file gains `{=...}`. A raw block or span for a format the markdown writer can't write natively, such as `{=typst}`, is then dropped, and the guard only sees it if a check renders that format: with `check: [source, html, latex]` such a file is accepted with the raw content deleted, while `check: [source, html, typst]` rejects it. The happy case assumes raw attributes only for TeX and HTML (see the [open question](#open-questions)).
 - **`#.` lists:** a normalization that writes `#.` as `1.` works (30/32 becomes 31/32 on the corpus), but it isn't invisible: in LaTeX, a nested `#.` list gets LaTeX's own second-level label `(a)`, and after the normalization it gets `1.`. So it stays out of the defaults until the writer is fixed; it could be offered as an opt-in normalization.
 - **Example lists:** the `example_lists` extension stays on. The writer never produces example lists, and turning the extension off would silently make existing ones plain text.
 
@@ -231,12 +231,12 @@ The user-facing side is [Advanced: raw content](../guide/markdown.md#raw-content
 
 | Setting | Flaw |
 |---|---|
-| `to: …-raw_attribute` (the old recommendation) | raw content for formats without a native syntax (`{=typst}`) is dropped, and accepted unless a check renders that format |
+| `to: …-raw_attribute` (the old recommendation, as `raw: pandoc` still does) | raw content for formats without a native syntax (`{=typst}`) is dropped, and accepted unless a check renders that format |
 | `to:` with `raw_attribute` (pandoc's default) | typed inline HTML and TeX are rewritten as `` `…`{=html} ``; raw blocks are still written natively |
 | `to: …-raw_html-raw_tex` | everything typed natively is rewritten, comments included |
 | `from: …-raw_attribute` | the reader no longer parses the attribute form: fences become inline code, and the guard, reading both sides the same way, accepts it. The only setting that damages what every output shows. |
 
-**The mechanism.** The writer copies a raw element of format `markdown` out verbatim (`nest 0` keeps its blank lines), in both the markdown and the CommonMark variant. So panblack can choose the syntax per element: an element to be written in the attribute form becomes a raw `markdown` element holding `` `…`{=fmt} `` or a fenced block followed by a blank line. When `to` has `raw_attribute`, the writer puts every raw inline in the attribute form, so the inlines meant to be native become raw `markdown` elements holding their text. The fence is one backtick longer than the longest run in the content, at least 3 for blocks.
+**The mechanism.** The writer copies a raw element of format `markdown` out verbatim (`nest 0` keeps its blank lines), in both the markdown and the CommonMark variant. So panblack can choose the syntax per element: an element to be written in the attribute form becomes a raw `markdown` element holding `` `…`{=fmt} `` or a fenced block followed by a blank line. Unless `raw: pandoc`, panblack also turns `raw_attribute` off in the writer (`rawWriterSpec`): with it on, the writer puts every raw inline in the attribute form itself. So `to` needs no raw setting, and the recommended config has no `to` at all; on both corpora, under every `raw:` setting and both flavours, the output is byte-identical to the old recommendation's `to: …-raw_attribute`. The fence is one backtick longer than the longest run in the content, at least 3 for blocks.
 
 **The policies, measured** with checks `[source, html, latex]`, the recommended settings, `--no-cache -j1`, on the golden corpus (1128 files) and Quarto's documentation (552 pages), read as pandoc markdown and as `commonmark_x-smart` (neither is written for CommonMark, so the second is a stress test). Quarto's with the current build:
 

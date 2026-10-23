@@ -16,7 +16,6 @@ The config is `.panblack.yaml`, searched from the working directory upwards, sto
   raw: native              # how raw HTML and TeX are written; the default
   pandoc:                  # an inline pandoc defaults file
     from: markdown-simple_tables-multiline_tables-smart-latex_macros+east_asian_line_breaks
-    to: markdown-simple_tables-multiline_tables-smart-latex_macros+east_asian_line_breaks-raw_attribute
     wrap: preserve
     columns: 120
     reference-location: block

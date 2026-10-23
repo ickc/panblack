@@ -91,10 +91,11 @@ main = do
   let recommendedFrom = "markdown-simple_tables-multiline_tables-smart-latex_macros"
       target = either (error . show) id . targetByName
       rawProfileFor flavour to syntax =
-        let p0 = either (error . show) id (markdownProfile flavour to def preserve)
-            p = either (error . show) id (rawWriting syntax flavour to (normalizing [minBound .. maxBound] p0))
+        let to' = rawWriterSpec syntax flavour to
+            p0 = either (error . show) id (markdownProfile flavour to' def preserve)
+            p = either (error . show) id (rawWriting syntax flavour to' (normalizing [minBound .. maxBound] p0))
          in p {profileChecks = sourceCheck p : map target ["html", "latex"]}
-      rawProfile = rawProfileFor recommendedFrom (recommendedFrom <> "-raw_attribute")
+      rawProfile = rawProfileFor recommendedFrom recommendedFrom
       typed = "Press <kbd>Ctrl</kbd> to cite \\cite{knuth}.\n\nInline `#emph[x]`{=typst} here.\n"
       -- A right-aligned signature, which needs its own markup in html and latex.
       perFormat =
@@ -104,8 +105,9 @@ main = do
       texOnly = "```{=latex}\n\\begin{flushright}\n```\n\nSigned.\n\n```{=latex}\n\\end{flushright}\n```\n"
   check "raw native: typed html and tex kept, typst kept" $
     textOf (format (rawProfile RawNative) typed) == Just typed
-  check "raw native: typed html and tex kept even with raw_attribute in to" $
-    textOf (format (rawProfileFor recommendedFrom recommendedFrom RawNative) typed) == Just typed
+  check "raw: -raw_attribute in to changes nothing" $
+    and [ textOf (format (rawProfileFor recommendedFrom (recommendedFrom <> "-raw_attribute") r) x) == textOf (format (rawProfile r) x)
+        | r <- [RawNative, RawAttribute, RawAuto], x <- [typed, perFormat, typed <> "\n" <> perFormat] ]
   check "raw native: commonmark_x keeps typed html inline even with raw_attribute in to" $
     textOf (format (rawProfileFor "commonmark_x-smart" "commonmark_x-smart" RawNative) "Press <kbd>Ctrl</kbd>.\n")
       == Just "Press <kbd>Ctrl</kbd>.\n"
@@ -126,7 +128,7 @@ main = do
   check "raw auto: many fragments are kept" $
     textOf (format (rawProfile RawAuto) manyFragments) == Just manyFragments
   check "raw native: commonmark_x writes html selected per format natively, and accepts it" $
-    either (const False) (const True) (format (rawProfileFor "commonmark_x-smart" "commonmark_x-smart-raw_attribute" RawNative) perFormat)
+    either (const False) (const True) (format (rawProfileFor "commonmark_x-smart" "commonmark_x-smart" RawNative) perFormat)
   check "raw: gfm has no attribute form, so nothing changes" $
     let p0 = either (error . show) id (markdownProfile "gfm" "gfm" def def)
         p = either (error . show) id (rawWriting RawAttribute "gfm" "gfm" p0)
