@@ -69,7 +69,7 @@ Merging adjacent `Str` elements, the other candidate, finds nothing: every file 
 - Runs purely in `PandocPure`: no IO, deterministic, sandboxed by construction (this replaces `--sandbox`).
 - Templates and resources are provided through PureState's in-memory file tree. The markdown template (`$titleblock$` + `$body$`, 0.x's) is embedded.
 - Readers and writers are imported directly, not through pandoc's registries, so a build that only needs markdown can drop the other formats at link time. Checks other than `html` go through the writer registry (`Panblack.Target.Registry`), which only the CLI links.
-- API: `format :: Profile -> Text -> Either GuardFailure Formatted`. A `Profile` is a reader, a writer and a list of checks; normalizations wrap its reader.
+- API: `format :: Profile -> Text -> Either GuardFailure Formatted`. A `Profile` is a reader, a writer and a list of checks; normalizations wrap its reader, and the raw syntax (`Panblack.Raw`) its writer.
 
 ## `panblack` (CLI, native static binary)
 
@@ -223,6 +223,50 @@ The normalizations and what each changes are in [Formatting markdown](../guide/m
 
 Potential problems considered for the table-cell normalization: a cell with a paragraph followed by a list and a code block, one with a hard line break (`\`), and one with inline math and a code span that wrap across lines. These are all in `haskell/experiments/tables/grid_blocks_wrapped.md`, which passes both checks. Hard breaks are a different element and are kept. The `east_asian_line_breaks` extension removes its line breaks while reading, so it doesn't interact.
 
+# Raw content: the evidence {#raw-content-the-evidence}
+
+The user-facing side is [Advanced: raw content](../guide/markdown.md#raw-content). Implementation: `Panblack.Raw`, which wraps a profile's writer after the normalizations wrap its reader, so `auto` reads back exactly as the guard does.
+
+**The problem.** pandoc markdown has a native and an attribute syntax for raw HTML and TeX, the reader maps both to the same `RawBlock`/`RawInline`, and the writer picks one syntax per kind of element from the `to` extensions: inlines prefer the attribute form, blocks the native one ([upstream issue 10](#upstream-issues)). No `to` setting keeps both styles as typed. Tried first, each with its own flaw:
+
+| Setting | Flaw |
+|---|---|
+| `to: …-raw_attribute` (the old recommendation) | raw content for formats without a native syntax (`{=typst}`) is dropped, and accepted unless a check renders that format |
+| `to:` with `raw_attribute` (pandoc's default) | typed inline HTML and TeX are rewritten as `` `…`{=html} ``; raw blocks are still written natively |
+| `to: …-raw_html-raw_tex` | everything typed natively is rewritten, comments included |
+| `from: …-raw_attribute` | the reader no longer parses the attribute form: fences become inline code, and the guard, reading both sides the same way, accepts it. The only setting that damages what every output shows. |
+
+**The mechanism.** The writer copies a raw element of format `markdown` out verbatim (`nest 0` keeps its blank lines), in both the markdown and the CommonMark variant. So panblack can choose the syntax per element: an element to be written in the attribute form becomes a raw `markdown` element holding `` `…`{=fmt} `` or a fenced block followed by a blank line. The fence is one backtick longer than the longest run in the content, at least 3 for blocks.
+
+**The policies, measured** with checks `[source, html, latex]`, the recommended settings, `--no-cache -j1`, on the golden corpus (1128 files) and the author's blog (68 posts), read as pandoc markdown and as `commonmark_x-smart` (the blog and corpus aren't written for CommonMark, so the second is a stress test):
+
+| Flavour | `raw:` | pandoc corpus accepted | time | blog accepted | time | native elements rewritten (blog) |
+|---|---|---|---|---|---|---|
+| markdown | `native` | 887 | 4.7 s | 43 | 2.7 s | 0 |
+| markdown | `attribute` | 883 | 8.1 s | 47 | 2.7 s | 38 |
+| markdown | `auto` | 887 | 5.9 s | 48 | 2.9 s | 0 |
+| commonmark_x | `native` | 886 | 7.8 s | 66 | 1.7 s | 0 |
+| commonmark_x | `attribute` | 886 | 8.0 s | 67 | 1.3 s | – |
+| commonmark_x | `auto` | 886 | 43.8 s | 67 | 1.6 s | 0 |
+
+- `auto` accepts every file `native` does, with the same output, plus 5 blog posts. All 5 use `{=html}` blocks to stop pandoc from reading their `<div>`, `<noscript>` or `<video>` as markdown.
+- On pandoc markdown, the fixed rules of `native` (below) don't recover those 5. Telling an HTML fragment that reads back as something else from one that doesn't takes a reread.
+- In CommonMark, native HTML blocks end at a blank line, which the writer puts after them, so they read back intact, and `native` is enough. The one rule it needs: the writer removes blank lines inside a native HTML block (`removeBlankLinesInHTML`), so a block that contains one goes in the attribute form.
+- The 43.8 s is pandoc's 1.3 MB `changelog.md` read as `commonmark_x`: `auto` writes and reads the whole file once per element it fixes.
+
+**Rules every policy but `attribute` and `pandoc` applies**, as they need no reread: formats the writer has no native syntax for; `latex` elements (native TeX reads as `tex`, so a `latex` element was typed in the attribute form; HTML has no such tell); TeX whose `\begin`/`\end` don't balance; in CommonMark, HTML blocks containing a blank line.
+
+**`auto`'s limit of 8 elements fixed one at a time**, then every raw block in the attribute form, then everything. Measured on the blog with pandoc markdown: a limit of 2 rewrites 14 native elements, 4 rewrites 2, 8 rewrites none. The limit bounds the rounds, not their cost per round.
+
+**Rejected designs:**
+
+- Testing each element alone (write it, read it back alone): no faster on these corpora (7.6 s on pandoc's corpus), since every raw inline is tested, and it misses context, such as a TeX environment swallowing the next paragraph.
+- One fallback straight to every raw block in the attribute form: the same acceptance as `auto`, but it rewrites 27 native elements in the 5 posts.
+
+**Default `native`**: the corpus results are those of the old recommendation, at no cost, and raw content is no longer dropped silently. `auto` is opt-in because of its cost and because only pandoc markdown needs it. `pandoc` reproduces 0.x: on the golden corpus with `normalize: []`, `raw: pandoc` gives files byte-identical to the build before `Panblack.Raw` under all three golden settings; `golden/run.sh` uses it.
+
+The examples are tests in `haskell/test/Spec.hs`.
+
 # Upstream issues
 
 Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for issues and patches. Rechecked with pandoc 3.12.1: all but 7 still reproduce. 9 and 10 were found later, on 3.12.1. Known limitations that are *not* listed: the alignment of simple tables, pipe tables padded past `columns`, and bare text in divs.
@@ -370,7 +414,7 @@ Each question has a provisional choice that the implementation builds on; the ev
 | Question | Provisional choice | Settled by |
 |---|---|---|
 | Normalizations: option names, defaults, how to turn them off | settled: a `normalize:` list, all on by default (author's decision, 2026-10-23), `[]` for none; see [Normalizations](../guide/markdown.md#normalizations) | done |
-| Raw content for formats other than HTML and TeX (e.g. `{=typst}`) is dropped without `raw_attribute` in `to`, and accepted unless a check renders that format (example in [Formatting markdown](../guide/markdown.md#raw-content)). No accepted file loses raw content on either corpus, and keeping `raw_attribute` changes the outcome of 4 files of 1196 (3 newly rejected, `INSTALL.md` among them, and 1 newly accepted) while rewriting native HTML and TeX as `{=html}`/`{=tex}`. | `-raw_attribute` in `to`, documented, with `-raw_html-raw_tex` for sources that select raw blocks per output format (rejected otherwise, since the writer writes raw HTML and TeX blocks natively; tracked by the unit tests). A guard-level fix for the silent drop would be an implicit check that every raw block and span survives; the format name can't simply be compared, since native TeX reads back as `tex` where `{=latex}` read as `latex`. | author |
+| How raw content is written back, given that the AST doesn't record which syntax was typed | settled: `raw: native` by default, `attribute` and `auto` opt-in, `pandoc` for 0.x (see [Raw content: the evidence](#raw-content-the-evidence)) | done |
 | ipynb: partial formatting and the whole-notebook check (see [How a notebook is formatted](../guide/notebooks.md#how-a-notebook-is-formatted)). Three things to revisit: a notebook paired with a markdown file that nothing renders as one document (e.g. kept only for diffs) is still rejected for footnotes numbered across cells, which may call for `ipynb.whole-notebook-check: never`; without the check, a cell holding only a link reference definition becomes empty, which is faithful per cell but deletes what the author wrote, so it might be rejected instead; and a partly reformatted file exits 2 on every run until its kept cells are fixed by hand | per cell, keep rejected cells; whole-notebook check only when paired with markdown | usage |
 | AST normalization before comparing (speed only) | settled: not adopted; with `wrap: preserve` every accepted file takes the fast path, and with `wrap: auto` a soft-break-insensitive comparison saves a sixth of the first run at the cost of coupling the guard to writer options (see [Guard algorithm](#guard-algorithm)) | golden corpus and blog, done |
 | Default table settings | grid and pipe tables only, `wrap: preserve`, widths reset (see [Formatting markdown](../guide/markdown.md#only-grid-and-pipe-tables)) | step 2 corpora |

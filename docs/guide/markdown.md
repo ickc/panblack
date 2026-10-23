@@ -44,80 +44,11 @@ With `smart` on while formatting, the writer rewrites what you typed: curly quot
 
 With it, the reader expands macros defined in the source, and the writer writes the expansion in place: after `\newcommand{\R}{\mathbb{R}}`, `$x \in \R$` becomes `$x \in \mathbb{R}$`. The html is the same, so the guard would accept it, but your macro is gone. Expanding macros is a rendering step. It has to be off when reading too, since that is where macros are expanded. Your own pandoc run with `latex_macros` is unaffected: the definitions and the math are kept as typed, so pandoc expands them the same way.
 
-## Raw content {#raw-content}
+## `raw_attribute` in `to` only
 
-pandoc markdown has two ways to write raw content: *native*, for the formats markdown knows (inline HTML such as `<kbd>`, and TeX such as `\cite{knuth}`), and the *raw attribute*, `` `...`{=format} `` or a ```` ```{=format} ```` block, for any format. The reader understands both, and the AST doesn't record which one you used. So the writer chooses, from the extensions in `to`:
+Without it, the writer writes inline HTML and TeX as you typed them. With it, as `` `<kbd>`{=html}Ctrl`</kbd>`{=html} `` and `` `\cite{knuth}`{=tex} ``, which pandoc reads the same but which is harder to read, and which other renderers (GitHub, JupyterLab, editors) show literally. Raw content for formats markdown has no other syntax for, such as `{=typst}`, is written by panblack itself and kept either way. If you also use `{=html}` or `{=latex}`, see [Advanced: raw content](#raw-content).
 
-- a raw **inline**: the raw attribute if `raw_attribute` is on, otherwise native for HTML and TeX, otherwise nothing;
-- a raw **block**: native for HTML and TeX if `raw_html` / `raw_tex` are on, otherwise the raw attribute if that is on, otherwise nothing.
-
-Two kinds of source are affected differently. The first types HTML and TeX natively, and perhaps uses a raw attribute for a format markdown has no syntax for:
-
-````markdown
-Press <kbd>Ctrl</kbd> to cite \cite{knuth}.
-
-Inline `#emph[x]`{=typst} here.
-
-```{=typst}
-#set page(width: 10cm)
-```
-````
-
-The second selects content per output format, because the same effect needs different markup in each. Right-aligning a line is an example: there is no markdown for it, so you write it once for html and once for latex, and each output keeps its own:
-
-````markdown
-```{=html}
-<div style="text-align: right">
-```
-
-```{=latex}
-\begin{flushright}
-```
-
-Signed, the author.
-
-```{=latex}
-\end{flushright}
-```
-
-```{=html}
-</div>
-```
-
-Inline: `<span style="float: right">`{=html}`\hfill{}`{=latex}right`</span>`{=html}.
-````
-
-**Without `raw_attribute` in `to`** (the recommended setting), the first source keeps its HTML and TeX as typed. But the writer has no way to write the typst, and drops it:
-
-```markdown
-Press <kbd>Ctrl</kbd> to cite \cite{knuth}.
-
-Inline here.
-```
-
-and the file is **accepted**: the raw typst renders as nothing in html, so the `html` check can't see it go, and the result is stable. Only a check that renders typst sees it (`check: [source, html, typst]` rejects the file instead). The second source is written natively, `<div style="text-align: right">` directly followed by `\begin{flushright}`. Read back, that is a different document: the TeX environment now swallows "Signed, the author.", which disappears from the html. (The inline selectors are written natively too, as `<span style="float: right">\hfill{}right</span>`, which reads back as a span, so even the latex changes.) The checks see the html lose the text, so the file is **rejected**, left as it was. Safe, but it is never formatted.
-
-**With `raw_attribute` in `to`** (pandoc's default), the typst is kept, and native inline HTML and TeX are rewritten in the attribute form:
-
-```markdown
-Press `<kbd>`{=html}Ctrl`</kbd>`{=html} to cite `\cite{knuth}`{=tex}.
-```
-
-pandoc renders this the same, but it reads worse, and other renderers (GitHub, JupyterLab, editors) show the `{=html}` literally. On pandoc's own `changelog.md` this happens in 5 places, and it gets `INSTALL.md` rejected, because a multi-line `<a ...>` tag is wrapped and reads back differently. Raw *blocks* of HTML and TeX are still written natively, so the second source is rejected as before.
-
-**With `-raw_html-raw_tex` in `to`** (and `raw_attribute` left on), the writer can only use the attribute form, so every raw element is written explicitly, blocks included. The second source survives and is accepted (pandoc's writer only drops the blank lines between consecutive raw blocks). Why raw blocks are treated differently from raw inlines is [upstream issue 10](../developer/design.md#upstream-issues). The cost is the first source: everything native is rewritten, an HTML comment `<!-- ... -->` becomes a ```` ```{=html} ```` block, and so on. Only `to` changes, so pandoc still reads native HTML and TeX as before, in panblack and in your own runs.
-
-| `to` | native HTML and TeX you typed | per-format raw blocks | raw content for other formats |
-|---|---|---|---|
-| `-raw_attribute` (recommended) | kept as typed | file rejected | **dropped, unless a check renders that format** |
-| pandoc's default | inline rewritten as `` `...`{=html} `` | file rejected | kept |
-| `-raw_html-raw_tex` | all rewritten in the attribute form | kept | kept |
-
-"Rejected" never damages a file: it is left as it was, and panblack exits with code 2. On the test corpora, `-raw_html-raw_tex` accepts 3 more blog posts (46 of 68) and 5 fewer of pandoc's files (882 of 1128) than the recommended setting, and rewrites native raw content in 5 of the accepted posts and 1 of pandoc's files. No accepted file loses raw content under any of the three.
-
-So: if you type HTML and TeX natively, keep the recommendation, and list a check for any other format you use raw. If you select content per output format, use `-raw_html-raw_tex`. The unit tests track the second source under all three settings.
-
-`raw_attribute` must stay on in `from`, as in your own pandoc runs. Turning it off there looks like a way to keep the attribute form exactly as typed, but the reader then no longer knows the syntax at all: a ```` ```{=latex} ```` fence isn't a valid fence any more, so it reads as inline code, and the writer writes it back on one line as `` `{=latex} \begin{flushright}` ``. The guard reads both sides the same wrong way, so it accepts this, and your own pandoc run then shows that line as literal code. It is the one setting here that damages files silently, which is why `from` must match how you run pandoc.
+`raw_attribute` must stay on in `from`, as in your own pandoc runs. Turning it off there looks like a way to keep the attribute form exactly as typed, but the reader then no longer knows the syntax at all: a ```` ```{=latex} ```` fence isn't a valid fence any more, so it reads as inline code, and the writer writes it back on one line as `` `{=latex} \begin{flushright}` ``. The guard reads both sides the same wrong way, so it accepts this, and your own pandoc run then shows that line as literal code. This is why `from` must match how you run pandoc.
 
 ## Only grid and pipe tables
 
@@ -143,7 +74,7 @@ The same reasoning applies to `commonmark`, `commonmark_x` and `gfm`, with fewer
 | `commonmark_x` | **on** | **on** | |
 | `gfm` | off | off | `tex_math_gfm`: the writer writes math as `` $`x`$ `` |
 
-So for `commonmark_x`, turn off `smart` as above, and `raw_attribute` in `to` (with the same [trade-off](#raw-content), stronger here: commonmark has no native TeX, so raw content for *any* format but HTML, `{=tex}` included, can only be written with it):
+So for `commonmark_x`, turn off `smart` as above, and `raw_attribute` in `to`, for the [same reason](#raw_attribute-in-to-only). CommonMark has no native TeX, so all raw content but HTML is written in the attribute form; and since its HTML blocks end at a blank line, which the writer puts after them, native HTML reads back intact, so the default `raw: native` keeps `{=html}` blocks working too (written as plain HTML).
 
 ```yaml
 - paths: [.]
@@ -237,4 +168,42 @@ These are cases the recommended settings exclude. The guard may still accept suc
 - **Simple and multiline tables.** With the recommended `from`, they aren't tables at all: the dashed line makes the header row a setext heading, and the rows become paragraphs. The guard can't notice, because it compares under the same reader. Convert them to grid or pipe tables first, and use the same `from` in your own pandoc runs.
 - **Example lists** (`(@)`, `(@label)`). The writer writes them as `(1)`, `(2)`, so they become ordinary lists, and the guard rejects the file ([upstream issue 3](../developer/design.md#upstream-issues)). Even with that fixed, labels couldn't survive: the reader replaces each reference `(@label)` with its number, so the label never reaches the AST.
 - **Autonumbered `#.` lists.** The writer writes them as `1.`, which changes the list style, so the guard rejects the file ([upstream issue 4](../developer/design.md#upstream-issues)). It can't be turned off by itself: `#.` belongs to `fancy_lists`, which also provides `a)`, `i.` and similar lists.
-- **Raw content for formats other than HTML and TeX**, without `raw_attribute` in `to`, is dropped unless a check renders that format, and **raw HTML and TeX blocks selected per output format** are rejected: see [Raw content](#raw-content).
+- **`{=html}` blocks holding part of an element**, such as an opening `<div>`, are rejected with the default `raw: native` in pandoc markdown: see [Advanced: raw content](#raw-content).
+
+# Advanced: raw content {#raw-content}
+
+Most files need nothing here. It matters if you use `{=html}` or `{=latex}` to give each output format its own markup.
+
+pandoc markdown has two ways to write raw HTML or TeX: as you'd type it (`<kbd>`), or with a raw attribute (`` `<kbd>`{=html} ``, or a ```` ```{=html} ```` block). pandoc reads both the same way, so once a file is read, nothing records which one you used, and panblack has to choose when it writes the file back. The `raw:` setting of a profile makes that choice. Take this file:
+
+````markdown
+Press <kbd>Ctrl</kbd>.
+
+```{=html}
+<div class="note">
+```
+
+Text.
+
+```{=html}
+</div>
+```
+````
+
+| `raw:` | What happens |
+|---|---|
+| `native` (the default) | `<kbd>` is kept. The two blocks are written as plain `<div class="note">` and `</div>`, which the next run reads as a div and writes as `::: note`. The `source` check sees that, so the file is rejected, and left as it was. |
+| `attribute` | The blocks are kept. `<kbd>` is rewritten as `` `<kbd>`{=html}Ctrl`</kbd>`{=html} ``. |
+| `auto` | Both are kept. |
+
+So:
+
+- **If you never use `{=html}` or `{=latex}`** for raw HTML or TeX, keep `raw: native`, the default. (Raw attributes for formats that have no other syntax, such as `{=typst}`, are fine: they are always kept as typed.)
+- **If you never type HTML or TeX directly** (`<kbd>`, `<!-- comments -->`, `\cite{...}`), use `raw: attribute`.
+- **If you do both**, use `raw: auto`. It costs time: after writing a file, it reads it back to check that every raw element came back unchanged. Each one that didn't is switched to the attribute form, and the file is written and read again, up to 8 times; after that, every raw block is put in the attribute form. Each round is a whole-file write and read. On the test corpora that made formatting 22% slower on pandoc's 1128 files and 7% slower on the author's 68 blog posts, but a large file with many raw elements can take much longer (pandoc's 1.3 MB changelog, read as `commonmark_x`, took about 40 seconds). Files without raw HTML or TeX cost nothing extra.
+
+`native` and `auto` also write a few raw elements in the attribute form because they can't be written natively: `{=latex}` elements (native TeX reads as `tex`, so a `latex` element can only have been typed with the attribute, and is kept that way), TeX holding a `\begin{...}` without its `\end{...}` or the reverse (written natively, it would swallow what follows), and, in the CommonMark family, HTML blocks containing a blank line (that writer removes the blank lines).
+
+`raw: pandoc` leaves the choice to pandoc's writer, from the `to` extensions alone, as 0.x did. It exists to compare with 0.x.
+
+`raw:` only applies when `from` reads raw attributes, which `gfm` and `commonmark` don't. The measurements behind these settings are in the [design notes](../developer/design.md#raw-content-the-evidence).

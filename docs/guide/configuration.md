@@ -13,6 +13,7 @@ The config is `.panblack.yaml`, searched from the working directory upwards, sto
   excludes: []
   check: [source, html]    # all must pass; default [source]
   normalize: [table-widths, table-cell-breaks]   # default all; [] for none
+  raw: native              # how raw HTML and TeX are written; the default
   pandoc:                  # an inline pandoc defaults file
     from: markdown-simple_tables-multiline_tables-smart-latex_macros+east_asian_line_breaks
     to: markdown-simple_tables-multiline_tables-smart-latex_macros+east_asian_line_breaks-raw_attribute
@@ -40,6 +41,7 @@ The config is `.panblack.yaml`, searched from the working directory upwards, sto
 | `excludes` | gitignore-style globs (see [Which files](#which-files)) | `[.git/, .pytest_cache/]` |
 | `check` | the checks, all of which must pass (see [Core philosophy](philosophy.md#several-targets-at-once)) | `[source]` |
 | `normalize` | the normalizations (see [Formatting markdown](markdown.md#normalizations)) | all of them |
+| `raw` | how raw content is written back: `native`, `attribute`, `auto` or `pandoc` (see [Advanced: raw content](markdown.md#raw-content)) | `native` |
 | `pandoc` | an inline pandoc defaults file, restricted to formatter options (see [Options](markdown.md#options)) | pandoc's defaults |
 | `defaults` | a pandoc defaults file, relative to the config file, with the same restriction. The inline `pandoc:` keys override it. It can't include further defaults files. | none |
 | `ipynb.cell-format` | the markdown flavour of notebook cells (see [Formatting notebooks](notebooks.md#markdown-flavour-of-the-cells)) | `gfm-tex_math_gfm` |
@@ -113,6 +115,6 @@ As black does, panblack skips files it has already accepted.
 Two WASI modules are released next to the native binaries:
 
 - **`panblack.wasm`** is the CLI, e.g. `wasmtime run --dir . panblack.wasm --check`, with the same config. WASI can't start processes, so hooks are skipped with a warning naming them, for you or the host to run, and files with hooks are then not cached. `-j` formats one file at a time. The cache needs a writable directory from the host (`--dir cache::/cache --env XDG_CACHE_HOME=/cache`); without one, nothing is cached.
-- **`panblack-lite.wasm`** is the build for editors: stdin to stdout, with one profile given as options: `--check` (`source` or `html`; default `source`), `--normalize` (default all), and every `pandoc:` key as an option (`--wrap=preserve --columns=72`). These go through the CLI's own config code, so the same settings format the same way. There is no config file, and no paths, cache, notebooks or hooks. Exit codes are as for the CLI's stdin mode: 0 formatted, 2 rejected, 3 error, and the input is passed through unless it was formatted, so an editor can skip formatting and show a diagnostic. It takes about 0.2 s on a 300-line document, fine for format on save.
+- **`panblack-lite.wasm`** is the build for editors: stdin to stdout, with one profile given as options: `--check` (`source` or `html`; default `source`), `--normalize` (default all), `--raw` (default `native`), and every `pandoc:` key as an option (`--wrap=preserve --columns=72`). These go through the CLI's own config code, so the same settings format the same way. There is no config file, and no paths, cache, notebooks or hooks. Exit codes are as for the CLI's stdin mode: 0 formatted, 2 rejected, 3 error, and the input is passed through unless it was formatted, so an editor can skip formatting and show a diagnostic. It takes about 0.2 s on a 300-line document, fine for format on save.
 
 The host must pass a program name in `argv`: with an empty `argv` the GHC runtime exits with code 71.

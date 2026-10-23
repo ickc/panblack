@@ -37,6 +37,7 @@ import Data.Yaml qualified as Y
 import Panblack.Guard (Check, Profile (..), sourceCheck)
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize (Normalization, normalizationByName, normalizationName, normalizing)
+import Panblack.Raw (RawSyntax (..), rawSyntaxByName, rawSyntaxName, rawWriting)
 import Panblack.Target.Registry (targetByName)
 import System.FilePath ((</>))
 import System.IO qualified as IO
@@ -53,6 +54,7 @@ data ProfileConfig = ProfileConfig
   , pcCheck :: [Text]
   -- ^ All must pass; empty accepts anything (0.x's @require_idempotence_format@).
   , pcNormalize :: [Normalization]
+  , pcRaw :: RawSyntax
   , pcDefaults :: Maybe FilePath
   -- ^ A pandoc defaults file, relative to the config file. The inline
   -- 'pcPandoc' keys override it.
@@ -75,6 +77,7 @@ defaultProfileConfig =
     , pcExcludes = [".git/", ".pytest_cache/"]
     , pcCheck = ["source"]
     , pcNormalize = [minBound .. maxBound]
+    , pcRaw = RawNative
     , pcDefaults = Nothing
     , pcPandoc = KM.empty
     , pcCellFormat = "gfm-tex_math_gfm"
@@ -95,6 +98,7 @@ parseConfig bs = do
     unknownKeys where' profileKeys o
     paths <- o .:? "paths" .!= []
     normalize <- o .:? "normalize" >>= maybe (pure (pcNormalize d)) (traverse (normalizationNamed where'))
+    raw <- o .:? "raw" >>= maybe (pure (pcRaw d)) (rawNamed where')
     pandoc <- o .:? "pandoc" .!= KM.empty
     unknownKeys (where' <> "pandoc: ") pandocKeys pandoc
     ipynb <- o .:? "ipynb" .!= KM.empty
@@ -106,6 +110,7 @@ parseConfig bs = do
       <*> o .:? "excludes" .!= pcExcludes d
       <*> o .:? "check" .!= pcCheck d
       <*> pure normalize
+      <*> pure raw
       <*> o .:? "defaults"
       <*> pure pandoc
       <*> ipynb .:? "cell-format" .!= pcCellFormat d
@@ -118,9 +123,17 @@ parseConfig bs = do
       )
       pure
       (normalizationByName name)
+  rawNamed where' name =
+    maybe
+      ( fail $
+          where' <> "raw: unknown syntax " <> show name <> "; expected one of "
+            <> T.unpack (T.intercalate ", " (map rawSyntaxName [minBound .. maxBound]))
+      )
+      pure
+      (rawSyntaxByName name)
 
 profileKeys :: [Text]
-profileKeys = ["paths", "exts", "excludes", "check", "normalize", "defaults", "pandoc", "ipynb", "hooks"]
+profileKeys = ["paths", "exts", "excludes", "check", "normalize", "raw", "defaults", "pandoc", "ipynb", "hooks"]
 
 -- | The pandoc options a profile may set: those that change how the source
 -- is read, or how the writer spells the document. Anything else (output
@@ -218,16 +231,17 @@ loadSettings root pc = do
           , setEol = optEol opt
           }
 
--- | The profile to format with: reader and writer, normalizations, checks.
-buildProfile :: Settings -> [Text] -> [Normalization] -> Either PandocError Profile
+-- | The profile to format with: reader and writer, normalizations, raw
+-- syntax, checks.
+buildProfile :: Settings -> [Text] -> [Normalization] -> RawSyntax -> Either PandocError Profile
 buildProfile = buildProfileWith targetByName
 
 -- | 'buildProfile' with the given lookup for the checks other than
 -- @source@. A build that doesn't call 'targetByName' leaves pandoc's writer
 -- registry out.
-buildProfileWith :: (Text -> Either PandocError Check) -> Settings -> [Text] -> [Normalization] -> Either PandocError Profile
-buildProfileWith target s checks ns = do
-  base <- normalizing ns <$> markdownProfile (setFrom s) (setTo s) (setReader s) (setWriter s)
+buildProfileWith :: (Text -> Either PandocError Check) -> Settings -> [Text] -> [Normalization] -> RawSyntax -> Either PandocError Profile
+buildProfileWith target s checks ns raw = do
+  base <- rawWriting raw (setFrom s) (setTo s) . normalizing ns =<< markdownProfile (setFrom s) (setTo s) (setReader s) (setWriter s)
   cs <- traverse (\c -> if c == "source" then Right (sourceCheck base) else target c) checks
   pure base {profileChecks = cs}
 
@@ -260,6 +274,9 @@ starterConfig =
     , "  # Normalizations each accept one kind of change to your own pandoc output."
     , "  # All are on by default; list the ones you want, or [] for none:"
     , "  # normalize: [" <> T.intercalate ", " (map normalizationName [minBound .. maxBound]) <> "]"
+    , "  # How raw HTML and TeX are written back: native (as typed directly, the"
+    , "  # default), attribute (`...`{=html}), or auto for files that use both."
+    , "  # raw: native"
     , "  # An inline pandoc defaults file. Reading options must match how you run"
     , "  # pandoc, except smart and latex_macros: formatting without them keeps your"
     , "  # text and macros as typed. Without raw_attribute, the writer keeps raw TeX"

@@ -166,7 +166,7 @@ run paths opts
             orDie = either (die' . ((name <> ": ") <>)) pure
         excludes <- orDie (traverse compileExclude (pcExcludes pc))
         settings <- loadSettings root pc >>= orDie . either (Left . T.unpack) Right
-        let build s = orDie . either (Left . T.unpack . renderError) Right $ buildProfile s (pcCheck pc) (pcNormalize pc)
+        let build s = orDie . either (Left . T.unpack . renderError) Right $ buildProfile s (pcCheck pc) (pcNormalize pc) (pcRaw pc)
             cf = pcCellFormat pc
         profile <- build settings
         cellProfile <- build settings {setFrom = cf, setTo = cf}

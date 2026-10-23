@@ -8,7 +8,8 @@
 #
 # Both use the pandoc on PATH for 0.x, which must be the pinned version.
 # For each setting, 0.x and 1.0 format separate copies of the corpus, with
-# no normalizations (0.x has none), and the resulting files are compared.
+# no normalizations and raw content as pandoc writes it (as in 0.x), and the
+# resulting files are compared.
 # Exits nonzero if a formatter fails (1.0 may reject files, exit code 2) or
 # if any file differs; the differing ones are in SETTING/differ.tsv.
 set -euo pipefail
@@ -37,7 +38,7 @@ for s in "${settings[@]}"; do
   rm -rf "$name" && mkdir -p "$name" && cp -r corpus "$name/old" && cp -r corpus "$name/new"
   (cd "$name/old" && "$ORACLE" --paths . -r $checks0 --pandoc-args "$args" -t none.toml --no-post-jupytext-sync >../old.log 2>&1) ||
     { echo "$name: 0.x failed, see $W/$name/old.log" >&2; exit 1; }
-  printf -- '- paths: [.]\n  check: %s\n  normalize: []\n  pandoc: %s\n' "$checks1" "$pandoc1" > "$name/new/.panblack.yaml"
+  printf -- '- paths: [.]\n  check: %s\n  normalize: []\n  raw: pandoc\n  pandoc: %s\n' "$checks1" "$pandoc1" > "$name/new/.panblack.yaml"
   status=0; (cd "$name/new" && "$PB" --no-cache >../new.log 2>&1) || status=$?
   [[ $status == 0 || $status == 2 ]] || { echo "$name: 1.0 exited $status, see $W/$name/new.log" >&2; exit 1; }
   python3 - "$name" <<'PY' || differ=1

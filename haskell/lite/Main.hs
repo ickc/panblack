@@ -5,7 +5,7 @@
 -- are left out.
 --
 -- A profile here means what it does in @.panblack.yaml@, parsed by the same
--- code: @--check@ and @--normalize@ as the profile keys, and pandoc's options
+-- code: @--check@, @--normalize@ and @--raw@ as the profile keys, and pandoc's options
 -- as its @pandoc:@ keys. So the same settings format the same way as the CLI.
 -- Nothing here may call 'Panblack.Target.Registry.targetByName': the linker
 -- would then keep every pandoc writer.
@@ -24,6 +24,7 @@ import Data.Yaml qualified as Y
 import Panblack.Config
 import Panblack.Guard
 import Panblack.Normalize (Normalization, normalizationByName, normalizationName)
+import Panblack.Raw (RawSyntax, rawSyntaxByName, rawSyntaxName)
 import Panblack.Target.Html (htmlCheck)
 import Paths_panblack (version)
 import System.Console.GetOpt
@@ -36,6 +37,7 @@ import Text.Pandoc.Version (pandocVersionText)
 data Opts = Opts
   { optChecks :: [Text]
   , optNormalize :: [Normalization]
+  , optRaw :: RawSyntax
   , optPandoc :: KM.KeyMap Value
   , optVersion :: Bool
   , optHelp :: Bool
@@ -45,6 +47,7 @@ options :: [OptDescr (Opts -> Either String Opts)]
 options =
   [ Option "" ["check"] (ReqArg (\s o -> Right o {optChecks = list s}) "LIST") "checks that must pass, of source and html (default: source); empty for none"
   , Option "" ["normalize"] (ReqArg (\s o -> (\ns -> o {optNormalize = ns}) <$> traverse normalization (list s)) "LIST") ("normalizations, of " <> T.unpack (T.intercalate ", " allNames) <> " (default: all); empty for none")
+  , Option "" ["raw"] (ReqArg (\s o -> (\r -> o {optRaw = r}) <$> rawSyntax (T.pack s)) "SYNTAX") ("how raw content is written, of " <> T.unpack (T.intercalate ", " (map rawSyntaxName [minBound .. maxBound])) <> " (default: native)")
   ]
     ++ [ Option "" [T.unpack k] (OptArg (\s o -> (\v -> o {optPandoc = KM.insert (K.fromText k) v (optPandoc o)}) <$> pandocValue k s) "VALUE") ("pandoc's " <> T.unpack k)
        | k <- pandocKeys
@@ -56,6 +59,7 @@ options =
   list = filter (not . T.null) . T.splitOn "," . T.pack
   allNames = map normalizationName [minBound .. maxBound]
   normalization n = maybe (Left ("--normalize: unknown normalization " <> T.unpack n)) Right (normalizationByName n)
+  rawSyntax n = maybe (Left ("--raw: unknown syntax " <> T.unpack n)) Right (rawSyntaxByName n)
 
 -- | An option's value as its @pandoc:@ key would have it: YAML, so numbers
 -- and booleans keep their types; a flag alone is @true@; comma-separated
@@ -100,13 +104,13 @@ main = do
     | otherwise -> run opts
  where
   d = defaultProfileConfig
-  defaults = Opts (pcCheck d) (pcNormalize d) KM.empty False False
+  defaults = Opts (pcCheck d) (pcNormalize d) (pcRaw d) KM.empty False False
 
 run :: Opts -> IO ()
 run opts = do
-  let pc = defaultProfileConfig {pcCheck = optChecks opts, pcNormalize = optNormalize opts, pcPandoc = optPandoc opts}
+  let pc = defaultProfileConfig {pcCheck = optChecks opts, pcNormalize = optNormalize opts, pcRaw = optRaw opts, pcPandoc = optPandoc opts}
   settings <- loadSettings "." pc >>= either (die' . T.unpack) pure
-  profile <- either (die' . T.unpack . renderError) pure $ buildProfileWith target settings (pcCheck pc) (pcNormalize pc)
+  profile <- either (die' . T.unpack . renderError) pure $ buildProfileWith target settings (pcCheck pc) (pcNormalize pc) (pcRaw pc)
   bytes <- B.getContents
   raw <- either (const (die' "stdin: not valid UTF-8")) pure (TE.decodeUtf8' bytes)
   case format profile (sourceText raw) of

@@ -114,7 +114,7 @@ The guard runs pandoc, so the guarantee is relative to pandoc as the processor. 
 
 If something other than pandoc consumes your source (JupyterLab, nbconvert, GitHub, MkDocs, ...), panblack promises nothing about how that tool sees the result: a change pandoc considers equivalent may still change the output elsewhere. This is inherent to the approach. panblack doesn't try to model other processors or work around their differences from pandoc. If you don't process your sources with pandoc, use a formatter built on the same parser as your processor.
 
-Likewise, the guarantee covers the targets you list as checks. Content that none of them renders, such as a raw `{=typst}` block when the checks are `html` and `latex`, is invisible to the guard (see [raw content](markdown.md#raw-content)).
+Likewise, the guarantee covers the targets you list as checks. Content that none of them renders, such as a raw `{=typst}` block when the checks are `html` and `latex`, is invisible to the guard. panblack writes such content back as you typed it, but no check confirms it (see [raw content](markdown.md#raw-content)).
 
 # Delegating to purpose-built tools
 

@@ -17,6 +17,7 @@ import Panblack.Jupytext (pairedPaths, pairedWithMarkdown)
 import Panblack.Notebook
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize
+import Panblack.Raw
 import Panblack.Target.Html (htmlCheck)
 import Panblack.Target.Registry (targetByName)
 import System.Directory (getTemporaryDirectory)
@@ -85,33 +86,50 @@ main = do
   check "normalization names round-trip" $
     all (\x -> normalizationByName (normalizationName x) == Just x) [minBound .. maxBound]
 
-  -- Raw content selected per output format: a right-aligned signature needs
-  -- its own markup in html and in latex. pandoc's writer writes raw html and
-  -- tex blocks natively, without the blank lines between them, so they read
-  -- back differently; written in the raw attribute form, they survive.
+  -- Raw content (Panblack.Raw), with the recommended markdown settings and
+  -- the examples of docs/guide/markdown.md, "Raw content".
   let recommendedFrom = "markdown-simple_tables-multiline_tables-smart-latex_macros"
       target = either (error . show) id . targetByName
-      rawProfile to cs =
-        let p = either (error . show) id (markdownProfile recommendedFrom (recommendedFrom <> to) def preserve)
-         in p {profileChecks = sourceCheck p : map target cs}
+      rawProfileFor flavour to syntax =
+        let p0 = either (error . show) id (markdownProfile flavour to def preserve)
+            p = either (error . show) id (rawWriting syntax flavour to (normalizing [minBound .. maxBound] p0))
+         in p {profileChecks = sourceCheck p : map target ["html", "latex"]}
+      rawProfile = rawProfileFor recommendedFrom (recommendedFrom <> "-raw_attribute")
+      typed = "Press <kbd>Ctrl</kbd> to cite \\cite{knuth}.\n\nInline `#emph[x]`{=typst} here.\n"
+      -- A right-aligned signature, which needs its own markup in html and latex.
       perFormat =
         "Left.\n\n```{=html}\n<div style=\"text-align: right\">\n```\n\n```{=latex}\n\\begin{flushright}\n```\n\n\
         \Signed.\n\n```{=latex}\n\\end{flushright}\n```\n\n```{=html}\n</div>\n```\n\n\
         \In `<span style=\"float: right\">`{=html}`\\hfill{}`{=latex}line`</span>`{=html}.\n"
-  check "raw per format: rejected with the recommended writer" $
-    failedChecks (format (rawProfile "-raw_attribute" ["html", "latex"]) perFormat) == ["source", "html", "latex"]
-  check "raw per format: rejected with raw_attribute alone" $
-    failedChecks (format (rawProfile "" ["html", "latex"]) perFormat) == ["source", "html"]
-  check "raw per format: kept with raw html and tex written as raw attributes" $
-    textOf (format (rawProfile "-raw_html-raw_tex" ["html", "latex"]) perFormat)
+      texOnly = "```{=latex}\n\\begin{flushright}\n```\n\nSigned.\n\n```{=latex}\n\\end{flushright}\n```\n"
+  check "raw native: typed html and tex kept, typst kept" $
+    textOf (format (rawProfile RawNative) typed) == Just typed
+  check "raw native: unbalanced tex environments kept in the attribute form" $
+    textOf (format (rawProfile RawNative) texOnly) == Just texOnly
+  -- The html fragment is written natively and reads back as a div, which
+  -- the latex shows (upstream issue 10).
+  check "raw native: html selected per format is rejected" $
+    failedChecks (format (rawProfile RawNative) perFormat) == ["source", "latex"]
+  check "raw attribute: html selected per format is kept as typed" $
+    textOf (format (rawProfile RawAttribute) perFormat) == Just perFormat
+  check "raw attribute: typed html and tex are rewritten" $
+    textOf (format (rawProfile RawAttribute) typed)
+      == Just "Press `<kbd>`{=html}Ctrl`</kbd>`{=html} to cite `\\cite{knuth}`{=tex}.\n\nInline `#emph[x]`{=typst} here.\n"
+  check "raw auto: both styles in one file" $
+    textOf (format (rawProfile RawAuto) (typed <> "\n" <> perFormat))
       == Just
-        "Left.\n\n```{=html}\n<div style=\"text-align: right\">\n```\n```{=latex}\n\\begin{flushright}\n```\n\
-        \Signed.\n\n```{=latex}\n\\end{flushright}\n```\n```{=html}\n</div>\n```\n\
-        \In `<span style=\"float: right\">`{=html}`\\hfill{}`{=latex}line`</span>`{=html}.\n"
-  -- A known gap: raw content for a format no check renders is dropped and
-  -- accepted (docs/guide/markdown.md, "raw_attribute in to only").
-  check "raw typst: dropped by the recommended writer, unseen by html" $
-    textOf (format (rawProfile "-raw_attribute" ["html"]) "a `#x`{=typst} b\n") == Just "a b\n"
+        ( typed <> "\nLeft.\n\n```{=html}\n<div style=\"text-align: right\">\n```\n\n```{=latex}\n\\begin{flushright}\n```\n\n\
+          \Signed.\n\n```{=latex}\n\\end{flushright}\n```\n\n</div>\n\n\
+          \In `<span style=\"float: right\">`{=html}`\\hfill{}`{=latex}line</span>.\n"
+        )
+  check "raw native: commonmark_x writes html selected per format natively, and accepts it" $
+    either (const False) (const True) (format (rawProfileFor "commonmark_x-smart" "commonmark_x-smart-raw_attribute" RawNative) perFormat)
+  check "raw: gfm has no attribute form, so nothing changes" $
+    let p0 = either (error . show) id (markdownProfile "gfm" "gfm" def def)
+        p = either (error . show) id (rawWriting RawAttribute "gfm" "gfm" p0)
+     in textOf (format p "a <kbd>b</kbd>\n") == Just "a <kbd>b</kbd>\n"
+  check "raw syntax names round-trip" $
+    all (\x -> rawSyntaxByName (rawSyntaxName x) == Just x) [minBound .. maxBound]
 
   -- Config
   let parsed = parseConfig
@@ -126,6 +144,9 @@ main = do
   check "config: unknown profile key" $ isLeft (parsed "- paths: [a]\n  normalise: []\n")
   check "config: rejected pandoc key" $ isLeft (parsed "- paths: [a]\n  pandoc: {filters: [x.lua]}\n")
   check "config: unknown normalization" $ isLeft (parsed "- paths: [a]\n  normalize: [tables]\n")
+  check "config: raw defaults to native" $ fmap (map pcRaw) (parsed "- paths: [a]\n") == Right [RawNative]
+  check "config: raw: auto" $ fmap (map pcRaw) (parsed "- paths: [a]\n  raw: auto\n") == Right [RawAuto]
+  check "config: unknown raw syntax" $ isLeft (parsed "- paths: [a]\n  raw: fenced\n")
   check "config: not a list" $ isLeft (parsed "paths: [a]\n")
   check "config: ipynb and hooks" $
     fmap (map (\p -> (pcCellFormat p, pcHooks p))) (parsed "- paths: [a]\n  ipynb: {cell-format: gfm}\n  hooks: [[jupytext, --sync, '{path}']]\n")

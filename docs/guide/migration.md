@@ -31,7 +31,7 @@ Expect a one-time reformat commit per project. The bundled pandoc version is lik
 | `del_jupytext_encoding` | removed, with a note: 1.0 never changes notebook metadata (see [below](#del_jupytext_encoding)) |
 | `post_jupytext_sync`, `jupytext_args` | `hooks: [[jupytext, --sync, ...args, '{path}']]`. Black and isort pipes are kept as they are, and the ruff equivalent is printed as a suggestion (see [Code cells](notebooks.md#code-cells-ruff)). |
 | `pandoc_path` | removed: pandoc is bundled |
-| `-raw_attribute` in `input_format` | kept in `pandoc.from`, but move it to `pandoc.to` (see [Formatting markdown](markdown.md#raw-content)): in `from` it lets the guard accept rewriting a raw block as code. |
+| `-raw_attribute` in `input_format` | kept in `pandoc.from`, but move it to `pandoc.to` (see [Formatting markdown](markdown.md#raw_attribute-in-to-only)): in `from` it lets the guard accept rewriting a raw block as code. |
 | `processes`, `mode` | `-j` |
 | `toml_path`, `save*` | `--config`, `panblack init` |
 

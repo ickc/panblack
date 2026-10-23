@@ -56,6 +56,7 @@ library
     Panblack.Jupytext
     Panblack.Markdown
     Panblack.Normalize
+    Panblack.Raw
     Panblack.Notebook
     Panblack.Target.Html
     Panblack.Target.Registry
