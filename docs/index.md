@@ -17,7 +17,7 @@ panblack fits if:
 - **you convert them with pandoc**, and
 - you want one consistent style across a project, enforced in CI or pre-commit, without worrying that formatting changes your output.
 
-It isn't for you if something other than pandoc renders your sources (GitHub, MkDocs, JupyterLab, ...): panblack can only promise what pandoc sees. Use a formatter built on the same parser as your renderer instead.
+It isn't for you if something other than pandoc renders your sources (GitHub, MkDocs, JupyterLab, ...): panblack can only promise what pandoc sees. Use a formatter built on the same parser as your renderer instead. The same goes for sources that a framework preprocesses before pandoc, such as Quarto or Hugo shortcodes and Liquid or Jinja templates: panblack doesn't understand that syntax, and escapes it ([Preprocessor syntax](guide/philosophy.md#preprocessor-syntax)).
 
 # Quick start
 

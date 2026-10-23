@@ -120,6 +120,19 @@ The guard runs pandoc, so the guarantee is relative to pandoc as the processor. 
 
 If something other than pandoc consumes your source (JupyterLab, nbconvert, GitHub, MkDocs, ...), panblack promises nothing about how that tool sees the result: a change pandoc considers equivalent may still change the output elsewhere. This is inherent to the approach. panblack doesn't try to model other processors or work around their differences from pandoc. If you don't process your sources with pandoc, use a formatter built on the same parser as your processor.
 
+## Preprocessor syntax {#preprocessor-syntax}
+
+The same applies when a tool processes your source *before* pandoc does. Several frameworks add a template or macro language on top of markdown and expand it first: Quarto and Hugo shortcodes, Liquid in Jekyll, Jinja in MkDocs macros, knitr chunks in R Markdown. panblack implements none of these syntaxes. To pandoc they are plain text, so the writer escapes whatever looks like markdown in them, and since pandoc's own output doesn't change, the guard accepts it. The preprocessor then no longer recognizes what you wrote:
+
+| You wrote | panblack writes |
+|---|---|
+| `{{< include _part.md >}}` (Quarto, Hugo) | `{{\< include \_part.md \>}}` |
+| `{% include _footer.html %}` (Liquid) | `{% include \_footer.html %}` |
+| `{% set area = width * height %}` (Jinja) | `{% set area = width \* height %}` |
+| `` ```{r} x ``` `` inline (R Markdown) | `` `{r} x` `` |
+
+On Quarto's own documentation, 205 of the 257 pages that use shortcodes are written back with them escaped. Until panblack understands a framework's syntax, leave the files that use it out, with `excludes:` or a profile whose `paths` don't cover them.
+
 Likewise, the guarantee covers the targets you list as checks. Content that none of them renders, such as a raw `{=typst}` block when the checks are `html` and `latex`, is invisible to the guard. panblack writes such content back as you typed it, but no check confirms it (see [raw content](markdown.md#raw-content)).
 
 # Delegating to purpose-built tools

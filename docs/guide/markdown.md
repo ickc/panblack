@@ -163,6 +163,8 @@ All are on by default. List the ones you want in a profile's `normalize:` key, o
 
 These are cases the recommended settings exclude. The guard may still accept such files, but the result isn't what you'd want:
 
+- **Preprocessor syntax**, such as Quarto or Hugo shortcodes (`{{< ... >}}`) and Liquid or Jinja templates, is plain text to pandoc and gets escaped: see [Preprocessor syntax](philosophy.md#preprocessor-syntax).
+
 - **Simple and multiline tables.** With the recommended `from`, they aren't tables at all: the dashed line makes the header row a setext heading, and the rows become paragraphs. The guard can't notice, because it compares under the same reader. Convert them to grid or pipe tables first, and use the same `from` in your own pandoc runs.
 - **Example lists** (`(@)`, `(@label)`). The writer writes them as `(1)`, `(2)`, so they become ordinary lists, and the guard rejects the file ([upstream issue 3](../developer/design.md#upstream-issues)). Even with that fixed, labels couldn't survive: the reader replaces each reference `(@label)` with its number, so the label never reaches the AST.
 - **Autonumbered `#.` lists.** The writer writes them as `1.`, which changes the list style, so the guard rejects the file ([upstream issue 4](../developer/design.md#upstream-issues)). It can't be turned off by itself: `#.` belongs to `fancy_lists`, which also provides `a)`, `i.` and similar lists.
