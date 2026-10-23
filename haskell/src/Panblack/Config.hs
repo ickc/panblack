@@ -1,9 +1,9 @@
--- | The @.panblack.yaml@ config: a list of profiles (see docs/design.md,
--- "Config").
+-- | The @.panblack.yaml@ config: a list of profiles (see
+-- docs/guide/configuration.md).
 --
 -- A profile's @pandoc:@ key is an inline pandoc defaults file and is parsed
 -- by pandoc itself, after checking that it only uses options that make sense
--- for a formatter (docs/design.md, "Formatter options").
+-- for a formatter (docs/guide/markdown.md, "Options").
 module Panblack.Config
   ( ProfileConfig (..)
   , defaultProfileConfig

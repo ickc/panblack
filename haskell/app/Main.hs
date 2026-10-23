@@ -1,4 +1,4 @@
--- | The panblack CLI (see docs/design.md, "CLI").
+-- | The panblack CLI (see docs/guide/configuration.md, "Command line").
 module Main (main) where
 
 import Control.Concurrent (forkIO, rtsSupportsBoundThreads, setNumCapabilities)

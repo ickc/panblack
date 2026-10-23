@@ -3,7 +3,7 @@
 -- A 'Profile' supplies a reader, a writer and a list of checks. 'format'
 -- writes the source out once and accepts the result only if every check
 -- renders the original and the formatted source identically (see
--- docs/design.md, "Guard algorithm"). This mirrors 0.x's
+-- docs/developer/design.md, "Guard algorithm"). This mirrors 0.x's
 -- @require_idempotence_format@.
 --
 -- Everything runs in 'PandocPure': no IO, deterministic, sandboxed.

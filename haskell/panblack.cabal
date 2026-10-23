@@ -92,7 +92,7 @@ test-suite spec
     , filepath
 
 -- The small build for editors: stdin to stdout, markdown only (see
--- docs/design.md, "panblack-lite").
+-- docs/developer/design.md, "wasm builds").
 executable panblack-lite
   import:           warnings, deps
   hs-source-dirs:   lite

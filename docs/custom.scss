@@ -7,6 +7,11 @@ $font-family-monospace: 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monos
 $line-height-base: 1.45;
 $font-size-base: 1.0625rem; // ~17px — Butterick recommends ≥ 15–16px
 
+// Flatly and darkly each open their bundle with an `@import` of Google Fonts' Lato, which nothing on the page is
+// set in once the families above replace it. Bootswatch guards the rule with `@if $web-font-path`, so `false`
+// drops a render-blocking request to a third origin from both bundles.
+$web-font-path: false;
+
 /*-- scss:rules --*/
 
 // Constrain line length for readability (Butterick: 45–90 chars, aim ~65–72)
@@ -21,6 +26,12 @@ p {
   text-align: justify;
 }
 
+// Display math sits inside the <p>; as a block of its own, the line before it ends a block and is not
+// justified. Otherwise some browsers stretch a short line such as "Take" across the full width.
+span.math.display {
+  display: block;
+}
+
 // Definition lists
 dl dt {
   font-weight: bold;
@@ -29,4 +40,22 @@ dl dt {
 // Code inline
 code {
   font-size: 0.9em;
+}
+
+// Bootstrap paints every `code` with $code-bg, which stays light (#f8f9fa) in darkly too, and Quarto repaints it
+// only inside p, li and td. So inline code anywhere else, in a heading or in a definition list's <dd> (whose text
+// is not in a <p>), was white on white in the dark theme. Give all inline code the colour Quarto gives it in a
+// paragraph. Quarto's `nav li code` rule is more specific, so code in the navbar and the TOC stays unpainted.
+@if variable-exists(code-block-bg-color) {
+  :not(pre) > code:not(.sourceCode) {
+    background-color: $code-block-bg-color;
+  }
+}
+
+// Diagrams are SVGs with a transparent background and dark ink (Graphviz, see media/dot/), which vanish on the
+// dark theme. Give them the light page they were drawn on.
+body.quarto-dark img[src$=".svg"] {
+  background: #fff;
+  border-radius: $border-radius;
+  padding: 0.5rem;
 }

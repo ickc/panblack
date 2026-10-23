@@ -1,4 +1,4 @@
--- | Jupyter notebooks, formatted cell by cell (see docs/design.md, "ipynb").
+-- | Jupyter notebooks, formatted cell by cell (see docs/guide/notebooks.md).
 --
 -- Only the markdown cells' sources go through the markdown pipeline. They
 -- are spliced back into the original bytes, so every other byte of the file

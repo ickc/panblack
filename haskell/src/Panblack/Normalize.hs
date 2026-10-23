@@ -1,8 +1,9 @@
--- | AST normalizations, applied right after every read (see docs/design.md,
--- "Normalizations").
+-- | AST normalizations, applied right after every read (see
+-- docs/guide/markdown.md, "Normalizations").
 --
--- Each one gives up pandoc-relative equality in one stated way, so each is
--- opt-in. Wrapping a profile's reader with 'normalizing' applies it to the
+-- Each one gives up pandoc-relative equality in one stated way, so each can
+-- be left out of a profile's @normalize:@ list (all are on by default).
+-- Wrapping a profile's reader with 'normalizing' applies it to the
 -- original and the formatted source alike: the checks compare normalized
 -- documents, and the output is written from a normalized AST.
 module Panblack.Normalize

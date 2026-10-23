@@ -7,10 +7,19 @@ platforms = ["linux-64", "osx-arm64", "osx-64"]
 
 [dependencies]
 quarto = "*"
+# Renders the diagrams in docs/media/dot.
+graphviz = "*"
+# For `serve` only: a plain static server over the last render.
+python = ">=3.12"
 
 [activation]
 env = { QUARTO_PORT = "21576" }
 
 [tasks]
-build = { cmd = "quarto render", cwd = "docs", description = "Render the Quarto website" }
-serve = { cmd = "quarto preview docs --port $QUARTO_PORT --host 0.0.0.0", description = "Serve the Quarto site on port QUARTO_PORT" }
+build-media = { cmd = "make", cwd = "docs/media/dot", description = "Render the diagrams: an SVG from each docs/media/dot/*.dot" }
+clean-media = { cmd = "make clean", cwd = "docs/media/dot", description = "Remove the rendered diagrams" }
+build = { cmd = "quarto render", cwd = "docs", depends-on = ["build-media"], description = "Render the Quarto website to docs/_site" }
+preview = { cmd = "quarto preview docs --port $QUARTO_PORT --host 0.0.0.0", depends-on = ["build-media"], description = "Live preview on port QUARTO_PORT: quarto re-renders what you save" }
+# Plain static server over the last render, without quarto's preview harness.
+serve = { cmd = "python3 -m http.server $QUARTO_PORT -d docs/_site", description = "Serve the rendered site in docs/_site on port QUARTO_PORT, as is" }
+clean = { cmd = "rm -rf _site .quarto", cwd = "docs", depends-on = ["clean-media"], description = "Remove all generated files (Quarto output and cache, rendered diagrams)" }

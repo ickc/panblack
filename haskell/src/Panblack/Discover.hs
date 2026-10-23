@@ -5,7 +5,7 @@
 -- the files below it with one of the profile's extensions, except those
 -- matching an exclude.
 --
--- Excludes are gitignore-style globs (see docs/design.md, "Config"): a
+-- Excludes are gitignore-style globs (see docs/guide/configuration.md): a
 -- trailing @/@ matches directories only; a pattern with any other @/@ is
 -- anchored at the root; any other pattern matches a name at any depth.
 --

@@ -1,78 +1,40 @@
 ---
-title: panblack---black-like formatter for pandoc users
+title: panblack
+subtitle: A black-like formatter for pandoc users
 ---
 
-# Introduction
+panblack is an opinionated formatter for markdown and Jupyter notebooks, in the spirit of [black](https://github.com/psf/black). It formats with pandoc itself, and writes a file only if pandoc converts the formatted file exactly as it converted the original:
 
-Kind of like black, an opinionated formatter powered by pandoc, for markdown and Jupyter notebooks.
+![](media/dot/guarantee.svg){fig-alt="Your source x is parsed and rendered to y. The formatted source x′ is parsed and rendered to y′. panblack writes x′ only if y and y′ are equal." width=100%}
 
-panblack 1.0 is a rewrite in Haskell that bundles pandoc, in progress; see the [design](design.md).
-The Python 0.x is in the history; its last release is [`v0.2.0`](https://github.com/ickc/panblack/tree/v0.2.0).
+pandoc can rewrite markdown into markdown, but it is a converter, not a formatter: its reader keeps only what its own model of a document can hold, so a round trip can lose things. panblack makes it safe by judging the result rather than the round trip. If your markdown becomes html and latex, the formatted markdown must give the same html and the same latex, or panblack leaves the file alone. [Core philosophy](guide/philosophy.md) explains the idea in three pictures.
 
-# Key idea
+# Is it for you?
 
-Pandoc as a formatter is not a novel concept.
-However, pandoc is not designed to be a formatter.
-Pandoc has many readers & writers that can
-convert to and from different formats to its internal AST (abstract syntax tree.)
+panblack fits if:
 
-For example, for markdown format,
-converting from markdown to markdown via pandoc is lossy,
-because behind the scene pandoc actually
-converts from markdown to native AST first,
-and then convert from this AST
-(that doesn't capture all the source information)
-to markdown.
+- you write pandoc markdown, CommonMark, GFM or Jupyter notebooks, and
+- **you convert them with pandoc**, and
+- you want one consistent style across a project, enforced in CI or pre-commit, without worrying that formatting changes your output.
 
-As a formatter,
-you want it to have some kind of assurance that information is not lost.
-One could check the AST is "idempotent" (i.e. the formatted markdown produces the same AST.)
+It isn't for you if something other than pandoc renders your sources (GitHub, MkDocs, JupyterLab, ...): panblack can only promise what pandoc sees. Use a formatter built on the same parser as your renderer instead.
 
-However, often this requirement is still too strong.
-The key idea here is that we often are treating the markdown as source,
-and it will be converted to some target formats.
-Hence, we can relax the requirement (of reproducing the same AST) to
-reproducing the same target format.
-
-This is what panblack does---it uses pandoc to format the source
-with the requirements that it is idempotent to some specified output formats.
-
-That's also why panblack is designed for pandoc users.
-If you use processors other than pandoc,
-panblack does not guarantee the formatter is lossless (in the output target formats.)
-
-# Usage
+# Quick start
 
 ```bash
 panblack init > .panblack.yaml   # the recommended settings for markdown
-panblack                         # format the files the profiles cover
-panblack --check                 # exit 1 if any file would change
-panblack --diff                  # print a diff, write nothing
+panblack --diff                  # see what would change, write nothing
+panblack                         # format the files the config covers
+panblack --check                 # in CI: exit 1 if a file would change
 ```
 
-See [Config](design.md#config) and [CLI](design.md#cli) for the details.
+panblack is one static binary with pandoc inside, so its output depends only on the panblack version. Binaries for Linux, macOS, Windows and WASI are attached to each [GitHub release](https://github.com/ickc/panblack/releases); 1.0 is not released yet, so for now build it from source (see [Development](developer/development.md)). The Python 0.x's last release is [`v0.2.0`](https://github.com/ickc/panblack/tree/v0.2.0).
 
-# Migrating from 0.x
+# Where next
 
-0.x's last release, `v0.2.0`, writes 1.0's `.panblack.yaml` from the `tool.panblack` config in `pyproject.toml`:
-
-```bash
-uv tool install git+https://github.com/ickc/panblack@v0.2.0
-panblack export-config    # in the directory you run panblack from
-```
-
-See [Migration from 0.x](design.md#migration-from-0.x) for what changes.
-
-# Development
-
-```bash
-cabal build exe:panblack
-cabal test all
-```
-
-The docs are a Quarto site in `docs/`, with Quarto from pixi:
-
-```bash
-pixi run serve    # preview on port 21576
-pixi run build    # render to docs/_site
-```
+- [Core philosophy](guide/philosophy.md): what panblack guarantees, and why that makes pandoc usable as a formatter.
+- [Formatting markdown](guide/markdown.md): the recommended settings for pandoc markdown, CommonMark and GFM, and what each is for.
+- [Formatting notebooks](guide/notebooks.md): markdown cells, jupytext pairs, and code cells with ruff.
+- [Configuration and CLI](guide/configuration.md): the config file, the command line, the cache, and the wasm builds.
+- [Migrating from 0.x](guide/migration.md): from `pyproject.toml` to `.panblack.yaml`.
+- For working on panblack itself: [Development](developer/development.md) and the [design notes](developer/design.md).

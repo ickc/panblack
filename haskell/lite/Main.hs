@@ -1,6 +1,6 @@
 -- | panblack-lite: format stdin to stdout with one profile given by
 -- options, for editors and other hosts where size matters (see
--- docs/design.md, "panblack-lite"). The markdown flavours and the source and
+-- docs/developer/design.md, "wasm builds"). The markdown flavours and the source and
 -- html checks only; the CLI's config file, paths, cache, notebooks and hooks
 -- are left out.
 --

@@ -30,6 +30,29 @@ jobs:
           pixi-version: v0.69.0
           cache: true
 
+      # The diagrams (docs/media/dot) are rendered with cairo, which draws the
+      # labels as outlines in the font it finds. So the font must be installed
+      # to render them, but only then: the SVGs are cached on their sources,
+      # and on a hit the font is never installed.
+      - name: Restore the rendered diagrams
+        id: diagrams
+        uses: actions/cache@v6.1.0
+        with:
+          path: docs/media/dot/*.svg
+          key: diagrams-${{ hashFiles('docs/media/dot/*.dot', 'docs/media/dot/makefile') }}
+
+      # A checkout dates every file now, after the restored SVGs, so make would
+      # render them again, in whatever font is there. Date them after it.
+      - name: Mark the restored diagrams up to date
+        if: steps.diagrams.outputs.cache-hit == 'true'
+        run: touch docs/media/dot/*.svg
+
+      - name: Install the diagram font
+        if: steps.diagrams.outputs.cache-hit != 'true'
+        uses: ickc/font@ff02e8277d5453e310ced48343dd480f312aa3f3 # main
+        with:
+          fonts: tex-gyre-schola
+
       - name: Build site
         run: pixi run build
 

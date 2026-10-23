@@ -1,4 +1,4 @@
--- | The files jupytext pairs with a notebook (see docs/design.md, "ipynb"),
+-- | The files jupytext pairs with a notebook (see docs/guide/notebooks.md),
 -- so that panblack can warn when it formats both sides of a pair.
 --
 -- Mirrors jupytext's @paired_paths@ for the @jupytext.formats@ metadata of

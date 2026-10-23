@@ -1,4 +1,5 @@
--- | A cache of accepted files, as black has (see docs/design.md, "Cache").
+-- | A cache of accepted files, as black has (see docs/developer/design.md,
+-- "Cache").
 --
 -- Each profile has its own cache file, named by a key that covers
 -- everything a run depends on besides the file's content: the panblack and

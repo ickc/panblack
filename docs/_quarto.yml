@@ -14,8 +14,27 @@ website:
     left:
       - href: index.md
         text: Home
-      - href: design.md
-        text: Design
+      # For someone with a job to do: what panblack promises, then one page per
+      # kind of source, then the reference.
+      - text: Guide
+        menu:
+          - href: guide/philosophy.md
+            text: Core philosophy
+          - href: guide/markdown.md
+            text: Formatting markdown
+          - href: guide/notebooks.md
+            text: Formatting notebooks
+          - href: guide/configuration.md
+            text: Configuration and CLI
+          - href: guide/migration.md
+            text: Migrating from 0.x
+      # For working on panblack itself: how, then why.
+      - text: Developer
+        menu:
+          - href: developer/development.md
+            text: Development
+          - href: developer/design.md
+            text: Design notes
       - href: changelog.md
         text: Changelog
     right:

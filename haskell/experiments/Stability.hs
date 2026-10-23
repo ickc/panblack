@@ -13,7 +13,7 @@
 -- Build as for Tables.hs, then (from the repository root):
 --   stability DIR FROM TO WRAP COLUMNS[,COLUMNS...] RESET(yes|no)
 --
--- The corpus used in docs/design.md is these tables, the design doc, and
+-- The corpus used in docs/developer/design.md is these tables, the design doc, and
 -- pandoc's own markdown test files and MANUAL.txt sections with tables, taken
 -- from the pinned pandoc source (cabal get pandoc-3.12.1).
 module Main (main) where
