@@ -62,3 +62,11 @@ format:
           <link rel="preconnect" href="https://font.kolen.dev">
           <link rel="preconnect" href="https://font.kolen.dev" crossorigin>
           <link rel="stylesheet" href="https://font.kolen.dev/assets/faces.css">
+      # Math in TeX Gyre Schola Math, to match the text. MathJax 4 loads the
+      # font package from jsdelivr at its own version (mathjax-schola-font@4.1.3).
+      # This config has to come before the MathJax script.
+      - text: |
+          <script>window.MathJax = {output: {font: 'mathjax-schola'}};</script>
+    html-math-method:
+      method: mathjax
+      url: https://cdn.jsdelivr.net/npm/mathjax@4.1.3/tex-chtml.js
