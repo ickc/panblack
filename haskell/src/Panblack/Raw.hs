@@ -16,7 +16,9 @@ module Panblack.Raw
   ) where
 
 import Control.Monad.State.Strict (evalState, state)
+import Data.Algorithm.Diff (PolyDiff (..), getDiff)
 import Data.Set qualified as Set
+import Text.Pandoc.Class (PandocPure)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Panblack.Guard (Profile (..))
@@ -34,8 +36,9 @@ data RawSyntax
     RawNative
   | -- | Every raw element in the attribute form.
     RawAttribute
-  | -- | As 'RawNative', then read the result back, and write each element
-    -- that didn't read back the same in the attribute form instead.
+  | -- | As 'RawNative', then read the result back, and write the elements
+    -- that didn't read back the same in the attribute form instead; repeat
+    -- until they all do.
     RawAuto
   | -- | As pandoc's writer chooses, from the @to@ extensions alone: 0.x's
     -- behaviour.
@@ -52,11 +55,13 @@ rawSyntaxName = \case
 rawSyntaxByName :: Text -> Maybe RawSyntax
 rawSyntaxByName name = lookup name [(rawSyntaxName r, r) | r <- [minBound .. maxBound]]
 
--- | 'RawAuto' fixes at most this many elements one at a time, each costing
--- a write and a read of the whole file, then falls back to the attribute
--- form for every raw block, then for everything.
-autoLimit :: Int
-autoLimit = 8
+-- | 'RawAuto' takes at most this many rounds, each a write and a read of
+-- the whole file, then falls back to the attribute form for every raw
+-- block, then for everything. Each round fixes every element that didn't
+-- come back, so files need few: at most 2 on the test corpora, also for
+-- 400 fragments in one file.
+rounds :: Int
+rounds = 10
 
 -- | Spell raw content when the profile writes, given its reading and writing
 -- format specs (as for 'Panblack.Markdown.markdownProfile'). Apply it after
@@ -89,18 +94,21 @@ rawWriting syntax from to profile = runPure $ do
       spell pick = write . attributeWhere pick
       auto doc
         | null originals = write doc
-        | otherwise = go Set.empty
+        | otherwise = go 1 Set.empty
        where
         originals = raws doc
-        go ks = do
+        -- Each round writes the file, reads it back, and switches every
+        -- element that didn't come back (aligned as diff aligns lines) to
+        -- the attribute form.
+        go :: Int -> Set.Set Int -> PandocPure Text
+        go r ks = do
           out <- spell (\k e -> mustAttribute e || k `Set.member` ks) doc
           back <- raws <$> profileRead profile out
-          let firstDiff = [k | (k, a, b) <- zip3 [0 ..] originals (map Just back ++ repeat Nothing), Just a /= b, k `Set.notMember` ks]
-          case firstDiff of
-            [] -> pure out
-            k : _
-              | Set.size ks < autoLimit -> go (Set.insert k ks)
-              | otherwise -> fallback
+          let missing = Set.fromList (unmatched originals back) `Set.difference` ks
+          if
+            | back == originals || Set.null missing -> pure out
+            | r >= rounds -> fallback
+            | otherwise -> go (r + 1) (ks <> missing)
         fallback = do
           out <- spell (\_ e -> mustAttribute e || isBlock e) doc
           back <- raws <$> profileRead profile out
@@ -115,6 +123,16 @@ rawWriting syntax from to profile = runPure $ do
         RawPandoc -> write}
  where
   isBlock = either (const True) (const False)
+
+-- | The indices of the elements of the first list that the second lacks.
+unmatched :: Eq a => [a] -> [a] -> [Int]
+unmatched xs ys = go 0 (getDiff xs ys)
+ where
+  go _ [] = []
+  go k (d : ds) = case d of
+    Both _ _ -> go (k + 1) ds
+    First _ -> k : go (k + 1) ds
+    Second _ -> go k ds
 
 -- | The raw elements of a document, blocks first, in document order, each
 -- with its format name as pandoc's writers treat it (native TeX reads back

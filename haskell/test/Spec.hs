@@ -115,13 +115,11 @@ main = do
   check "raw attribute: typed html and tex are rewritten" $
     textOf (format (rawProfile RawAttribute) typed)
       == Just "Press `<kbd>`{=html}Ctrl`</kbd>`{=html} to cite `\\cite{knuth}`{=tex}.\n\nInline `#emph[x]`{=typst} here.\n"
-  check "raw auto: both styles in one file" $
-    textOf (format (rawProfile RawAuto) (typed <> "\n" <> perFormat))
-      == Just
-        ( typed <> "\nLeft.\n\n```{=html}\n<div style=\"text-align: right\">\n```\n\n```{=latex}\n\\begin{flushright}\n```\n\n\
-          \Signed.\n\n```{=latex}\n\\end{flushright}\n```\n\n</div>\n\n\
-          \In `<span style=\"float: right\">`{=html}`\\hfill{}`{=latex}line</span>.\n"
-        )
+  check "raw auto: both styles in one file are kept as typed" $
+    textOf (format (rawProfile RawAuto) (typed <> "\n" <> perFormat)) == Just (typed <> "\n" <> perFormat)
+  let manyFragments = T.intercalate "\n" ["```{=html}\n<div class=\"note\">\n```\n\nText.\n\n```{=html}\n</div>\n```\n" | _ <- [1 .. 50 :: Int]]
+  check "raw auto: many fragments are kept" $
+    textOf (format (rawProfile RawAuto) manyFragments) == Just manyFragments
   check "raw native: commonmark_x writes html selected per format natively, and accepts it" $
     either (const False) (const True) (format (rawProfileFor "commonmark_x-smart" "commonmark_x-smart-raw_attribute" RawNative) perFormat)
   check "raw: gfm has no attribute form, so nothing changes" $

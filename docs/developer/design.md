@@ -247,21 +247,22 @@ The user-facing side is [Advanced: raw content](../guide/markdown.md#raw-content
 | markdown | `auto` | 887 | 5.9 s | 48 | 2.9 s | 0 |
 | commonmark_x | `native` | 886 | 7.8 s | 66 | 1.7 s | 0 |
 | commonmark_x | `attribute` | 886 | 8.0 s | 67 | 1.3 s | – |
-| commonmark_x | `auto` | 886 | 43.8 s | 67 | 1.6 s | 0 |
+| commonmark_x | `auto` | 886 | 11.1 s | 67 | 1.5 s | 0 |
 
 - `auto` accepts every file `native` does, with the same output, plus 5 blog posts. All 5 use `{=html}` blocks to stop pandoc from reading their `<div>`, `<noscript>` or `<video>` as markdown.
 - On pandoc markdown, the fixed rules of `native` (below) don't recover those 5. Telling an HTML fragment that reads back as something else from one that doesn't takes a reread.
 - In CommonMark, native HTML blocks end at a blank line, which the writer puts after them, so they read back intact, and `native` is enough. The one rule it needs: the writer removes blank lines inside a native HTML block (`removeBlankLinesInHTML`), so a block that contains one goes in the attribute form.
-- The 43.8 s is pandoc's 1.3 MB `changelog.md` read as `commonmark_x`: `auto` writes and reads the whole file once per element it fixes.
+- The slowest file is pandoc's 1.3 MB `changelog.md` read as `commonmark_x`: 9.6 s with `auto`, 5.7 s with `native`.
 
 **Rules every policy but `attribute` and `pandoc` applies**, as they need no reread: formats the writer has no native syntax for; `latex` elements (native TeX reads as `tex`, so a `latex` element was typed in the attribute form; HTML has no such tell); TeX whose `\begin`/`\end` don't balance; in CommonMark, HTML blocks containing a blank line.
 
-**`auto`'s limit of 8 elements fixed one at a time**, then every raw block in the attribute form, then everything. Measured on the blog with pandoc markdown: a limit of 2 rewrites 14 native elements, 4 rewrites 2, 8 rewrites none. The limit bounds the rounds, not their cost per round.
+**`auto`'s rounds.** Each round writes the file, reads it back, aligns the raw elements read back with the original ones as `diff` aligns lines (the `Diff` library, already used for `--diff`), and switches every original element without a match to the attribute form. One round fixes all the elements that fail on their own; a second is needed only when fixing one exposes another, e.g. a TeX block that had swallowed it. Rounds needed: 19 files took one and none took more on pandoc's corpus as pandoc markdown; on the blog 12 took one and 5 took two; a file with 400 `{=html}` fragments took two, in 0.07 s. The limit is 10 rounds, then every raw block in the attribute form, then everything.
 
 **Rejected designs:**
 
 - Testing each element alone (write it, read it back alone): no faster on these corpora (7.6 s on pandoc's corpus), since every raw inline is tested, and it misses context, such as a TeX environment swallowing the next paragraph.
 - One fallback straight to every raw block in the attribute form: the same acceptance as `auto`, but it rewrites 27 native elements in the 5 posts.
+- Fixing the first differing element per round, the first version of `auto`: the same output on the blog, but one whole-file round per element, so a file with many fragments costs quadratic time (pandoc's changelog as `commonmark_x`: 43 s), and a cap on rounds then trades faithfulness for time (a cap of 2 rewrote 14 native elements on the blog, 4 rewrote 2, 8 none).
 
 **Default `native`**: the corpus results are those of the old recommendation, at no cost, and raw content is no longer dropped silently. `auto` is opt-in because of its cost and because only pandoc markdown needs it. `pandoc` reproduces 0.x: on the golden corpus with `normalize: []`, `raw: pandoc` gives files byte-identical to the build before `Panblack.Raw` under all three golden settings; `golden/run.sh` uses it.
 
