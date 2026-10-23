@@ -18,6 +18,7 @@ import Panblack.Notebook
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize
 import Panblack.Target.Html (htmlCheck)
+import Panblack.Target.Registry (targetByName)
 import System.Directory (getTemporaryDirectory)
 import System.Environment (setEnv)
 import System.Exit (exitFailure)
@@ -83,6 +84,34 @@ main = do
       == Just "| Name | Description  |\n|------|--------------|\n| a    | wrapped text |\n"
   check "normalization names round-trip" $
     all (\x -> normalizationByName (normalizationName x) == Just x) [minBound .. maxBound]
+
+  -- Raw content selected per output format: a right-aligned signature needs
+  -- its own markup in html and in latex. pandoc's writer writes raw html and
+  -- tex blocks natively, without the blank lines between them, so they read
+  -- back differently; written in the raw attribute form, they survive.
+  let recommendedFrom = "markdown-simple_tables-multiline_tables-smart-latex_macros"
+      target = either (error . show) id . targetByName
+      rawProfile to cs =
+        let p = either (error . show) id (markdownProfile recommendedFrom (recommendedFrom <> to) def preserve)
+         in p {profileChecks = sourceCheck p : map target cs}
+      perFormat =
+        "Left.\n\n```{=html}\n<div style=\"text-align: right\">\n```\n\n```{=latex}\n\\begin{flushright}\n```\n\n\
+        \Signed.\n\n```{=latex}\n\\end{flushright}\n```\n\n```{=html}\n</div>\n```\n\n\
+        \In `<span style=\"float: right\">`{=html}`\\hfill`{=latex}line`</span>`{=html}.\n"
+  check "raw per format: rejected with the recommended writer" $
+    failedChecks (format (rawProfile "-raw_attribute" ["html", "latex"]) perFormat) == ["source", "html", "latex"]
+  check "raw per format: rejected with raw_attribute alone" $
+    failedChecks (format (rawProfile "" ["html", "latex"]) perFormat) == ["source", "html"]
+  check "raw per format: kept with raw html and tex written as raw attributes" $
+    textOf (format (rawProfile "-raw_html-raw_tex" ["html", "latex"]) perFormat)
+      == Just
+        "Left.\n\n```{=html}\n<div style=\"text-align: right\">\n```\n```{=latex}\n\\begin{flushright}\n```\n\
+        \Signed.\n\n```{=latex}\n\\end{flushright}\n```\n```{=html}\n</div>\n```\n\
+        \In `<span style=\"float: right\">`{=html}`\\hfill`{=latex}line`</span>`{=html}.\n"
+  -- A known gap: raw content for a format no check renders is dropped and
+  -- accepted (docs/guide/markdown.md, "raw_attribute in to only").
+  check "raw typst: dropped by the recommended writer, unseen by html" $
+    textOf (format (rawProfile "-raw_attribute" ["html"]) "a `#x`{=typst} b\n") == Just "a b\n"
 
   -- Config
   let parsed = parseConfig
