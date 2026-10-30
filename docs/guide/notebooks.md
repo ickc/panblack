@@ -88,6 +88,6 @@ Run on 137 distinct notebooks (tutorials, course material and others) with `chec
 
 - 9 (copies of one tutorial): display math spanning lines, which pandoc reads differently after formatting.
 - 1: `\\(\sigma\\)` in three cells, which the commonmark writer wrote without the parentheses (fixed in pandoc 3.12).
-- 1: a fenced block with the info string `text`, which the commonmark writer drops ([upstream issue 8](../developer/design.md#upstream-issues)).
+- 1: a fenced block with the info string `text`, which the commonmark writer dropped ([upstream issue 8](../developer/design.md#upstream-issues), fixed in pandoc 3.13).
 
 1 was rejected by the whole-notebook check: it is paired with `_pair//md` and numbers its footnotes across cells. 1 file was not JSON. Every notebook that was in Jupyter's own layout before (131 of them) still is afterwards: code cells, outputs and metadata are unchanged, and a second run changes nothing.

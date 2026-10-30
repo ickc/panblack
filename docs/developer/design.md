@@ -271,7 +271,7 @@ The examples are tests in `haskell/test/Spec.hs`.
 
 # Upstream issues
 
-Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for issues and patches. Rechecked with pandoc 3.12.1: all but 7 still reproduce. 9 and 10 were found later, on 3.12.1. Known limitations that are *not* listed: the alignment of simple tables, pipe tables padded past `columns`, and bare text in divs.
+Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for issues and patches. Rechecked with pandoc 3.13: all but 7 and 8 still reproduce. 9 and 10 were found later, on 3.12.1. Known limitations that are *not* listed: the alignment of simple tables, pipe tables padded past `columns`, and bare text in divs.
 
 1. **Table cells get raw line breaks with `--wrap=preserve`.** A cell whose text contains a soft line break is written with the newline inside the row. For simple tables (the default choice) the continuation becomes a new row; for pipe tables the row is invalid. With `--wrap=auto` it becomes a space, as it should here too. Reproduction: `haskell/experiments/softbreak-in-cell.native`, a two-column table with widths at their defaults and one cell `wrapped⏎text`:
 
@@ -331,13 +331,13 @@ Found with pandoc 3.10.2, each with a minimal reproduction, as candidates for is
     $ printf '%s\n' 'x \\(a\\) y' | pandoc -f gfm -t gfm   # x \\a\\ y
     ```
 
-8. **The commonmark writer drops the info string `text`**, so the `text` class is lost (`<pre class="text">` becomes `<pre>`). Other languages are kept.
+8. **Fixed in pandoc 3.13 ([jgm/pandoc#11987](https://github.com/jgm/pandoc/issues/11987)).** **The commonmark writer drops the info string `text`**, so the `text` class is lost (`<pre class="text">` becomes `<pre>`). Other languages are kept.
 
     ```
     $ printf '```text\nx\n```\n' | pandoc -f gfm -t gfm       # ```
     ```
 
-9. **An empty div is dropped.** A div with no content, such as the `::: {#refs}` placeholder that says where citeproc puts the bibliography, isn't written at all, so it reads back as nothing. Checked with pandoc 3.10.2 and 3.12.1.
+9. **An empty div is dropped.** A div with no content, such as the `::: {#refs}` placeholder that says where citeproc puts the bibliography, isn't written at all, so it reads back as nothing. Checked with pandoc 3.10.2, 3.12.1 and 3.13.
 
     ```
     $ printf 'Text.\n\n::: {#refs}\n:::\n' | pandoc -t markdown    # Text.

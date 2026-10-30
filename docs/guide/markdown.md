@@ -94,7 +94,7 @@ For `gfm`, keep `$x$` math as typed with `-tex_math_gfm` in `to`:
     wrap: preserve
 ```
 
-The commonmark writer has its own losses: it drops the info string `text` from a fenced block ([upstream issue 8](../developer/design.md#upstream-issues)), which the html check catches.
+The commonmark writer shares some of the markdown writer's losses, such as a `)` in a link URL that it doesn't escape ([upstream issue 6](../developer/design.md#upstream-issues)), which the html check catches.
 
 # Options
 
