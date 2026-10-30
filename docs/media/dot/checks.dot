@@ -1,0 +1,32 @@
+digraph checks {
+    // Several targets at once. The original flows down from the top, the
+    // formatted source up from the bottom, and each pair of renders meets in
+    // the middle, where it must be equal.
+    nodesep=0.35;
+    ranksep=0.35;
+    node [shape=box, style="rounded,filled", fillcolor=white];
+    edge [fontsize=11, arrowsize=0.7];
+
+    x [label="x (your source)", fillcolor=lightblue];
+    a [label="AST", shape=ellipse, fillcolor=lightyellow];
+    h [label="html", fillcolor=lightgreen];
+    l [label="LaTeX", fillcolor=lightgreen];
+    s [label="markdown: x′", fillcolor=lightblue];
+
+    hf [label="html′", fillcolor=lightgreen];
+    lf [label="LaTeX′", fillcolor=lightgreen];
+    sf [label="markdown: x″", fillcolor=lightblue];
+    af [label="AST′", shape=ellipse, fillcolor=lightyellow];
+    xf [label="x′ (formatted)", fillcolor=lightblue];
+
+    x -> a [label=" parse"];
+    a -> h; a -> l; a -> s;
+    // Drawn downwards, pointing up.
+    hf -> af [dir=back]; lf -> af [dir=back]; sf -> af [dir=back];
+    af -> xf [dir=back, label=" parse"];
+
+    edge [dir=none, style=dashed, color=gray40, fontcolor=gray25, fontsize=14];
+    h -> hf [label=" ="];
+    l -> lf [label=" ="];
+    s -> sf [label=" = (check source)"];
+}

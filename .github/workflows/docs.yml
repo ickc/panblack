@@ -1,0 +1,63 @@
+name: GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/**
+      - CHANGELOG.md
+      - pixi.toml
+      - pixi.lock
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          pixi-version: v0.69.0
+          cache: true
+
+      # The diagrams (docs/media/dot) are rendered with cairo, which draws the
+      # labels as outlines in the font it finds. So the font must be installed
+      # to render them, but only then: the SVGs are cached on their sources,
+      # and on a hit the font is never installed.
+      - name: Restore the rendered diagrams
+        id: diagrams
+        uses: actions/cache@v6.1.0
+        with:
+          path: docs/media/dot/*.svg
+          key: diagrams-${{ hashFiles('docs/media/dot/*.dot', 'docs/media/dot/makefile') }}
+
+      # A checkout dates every file now, after the restored SVGs, so make would
+      # render them again, in whatever font is there. Date them after it.
+      - name: Mark the restored diagrams up to date
+        if: steps.diagrams.outputs.cache-hit == 'true'
+        run: touch docs/media/dot/*.svg
+
+      - name: Install the diagram font
+        if: steps.diagrams.outputs.cache-hit != 'true'
+        uses: ickc/font@ff02e8277d5453e310ced48343dd480f312aa3f3 # main
+        with:
+          fonts: tex-gyre-schola
+
+      - name: Build site
+        run: pixi run build
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/_site

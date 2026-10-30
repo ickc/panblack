@@ -1,0 +1,196 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native:
+    name: panblack (${{ matrix.subdir }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { subdir: linux-64, os: ubuntu-24.04 }
+          - { subdir: linux-aarch64, os: ubuntu-24.04-arm }
+          - { subdir: osx-64, os: macos-15-intel }
+          - { subdir: osx-arm64, os: macos-15 }
+          - { subdir: win-64, os: windows-2022 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read pins
+        run: |
+          grep -E '^[A-Z_]+=' pins.env >> "$GITHUB_ENV"
+          echo "VERSION=$(awk '/^version:/ {print $2}' haskell/panblack.cabal)" >> "$GITHUB_ENV"
+
+      - name: Set up GHC
+        if: runner.os != 'Linux'
+        id: ghc
+        uses: haskell-actions/setup@v2.12.1
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: ${{ env.CABAL_VERSION }}
+
+      - name: Locate cabal store
+        id: store
+        run: |
+          if [[ $RUNNER_OS == Linux ]]; then
+            # HOME inside the build container
+            echo "path=$HOME/cabal-home" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=${{ steps.ghc.outputs.cabal-store }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore cabal store
+        id: cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: ${{ steps.store.outputs.path }}
+          key: cabal-${{ matrix.subdir }}-ghc${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'haskell/*.cabal') }}
+          restore-keys: cabal-${{ matrix.subdir }}-ghc${{ env.GHC_VERSION }}-
+
+      - name: Build panblack (static, in Alpine container)
+        if: runner.os == 'Linux'
+        env:
+          CABALOPTS: --enable-executable-static -j4
+          GHCOPTS: -j4 +RTS -A256m -RTS -split-sections -optc-Os -optl=-pthread
+        run: |
+          mkdir -p "$HOME/cabal-home"
+          docker run --rm \
+            -v "$PWD:/work" -v "$HOME/cabal-home:/cabal-home" -w /work \
+            -e HOME=/cabal-home -e CABALOPTS -e GHCOPTS \
+            --user "$(id -u):$(id -g)" \
+            "$GHC_MUSL_IMAGE" \
+            bash scripts/build-native.sh dist/panblack
+
+      - name: Build panblack
+        if: runner.os != 'Linux'
+        run: bash scripts/build-native.sh dist/panblack
+
+      - name: Save cabal store
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: ${{ steps.store.outputs.path }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Archive
+        run: |
+          name=panblack-$VERSION-${{ matrix.subdir }}
+          mv dist/panblack "dist/$name"
+          cd dist
+          if [[ $RUNNER_OS == Windows ]]; then
+            7z a "$name.zip" "$name"
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: panblack-${{ matrix.subdir }}
+          path: |
+            dist/panblack-*.tar.gz
+            dist/panblack-*.zip
+          if-no-files-found: error
+
+  wasm:
+    name: panblack (wasm32-wasi)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read pins
+        run: |
+          grep -E '^[A-Z_]+=' pins.env >> "$GITHUB_ENV"
+          echo "VERSION=$(awk '/^version:/ {print $2}' haskell/panblack.cabal)" >> "$GITHUB_ENV"
+
+      - name: Restore wasm cabal store
+        id: cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: ~/.ghc-wasm/.cabal
+          key: cabal-wasm-${{ env.GHC_WASM_META_REV }}-${{ env.GHC_WASM_FLAVOUR }}-${{ hashFiles('cabal.project', 'cabal.project.wasm', 'haskell/*.cabal', 'haskell/wasm/patches/*') }}
+          restore-keys: cabal-wasm-${{ env.GHC_WASM_META_REV }}-${{ env.GHC_WASM_FLAVOUR }}-
+
+      # Build tools some dependencies need at configure time.
+      - name: Install alex and happy
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends alex happy
+
+      - name: Build panblack.wasm and panblack-lite.wasm
+        run: bash scripts/build-wasm.sh dist/wasm
+
+      - name: Save wasm cabal store
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: ~/.ghc-wasm/.cabal
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Archive
+        run: |
+          for exe in panblack panblack-lite; do
+            name=$exe-$VERSION-wasm32-wasi
+            mkdir "dist/$name"
+            cp "dist/wasm/$exe.wasm" dist/wasm/COPYING.md dist/wasm/COPYRIGHT "dist/$name/"
+            tar czf "dist/$name.tar.gz" -C dist "$name"
+          done
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: panblack-wasm32-wasi
+          path: dist/panblack-*.tar.gz
+          if-no-files-found: error
+
+  # A published release gets the archives, only if every platform built.
+  release:
+    needs: [native, wasm]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag against the version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(awk '/^version:/ {print $2}' haskell/panblack.cabal)
+          if [[ $TAG != "v$version" ]]; then
+            echo "::error::release $TAG does not match the cabal version $version"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: panblack-*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          cd dist
+          sha256sum panblack-* > SHA256SUMS
+          ls -l
+          gh release upload "$TAG" panblack-* SHA256SUMS --clobber

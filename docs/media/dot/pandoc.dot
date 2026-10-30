@@ -1,0 +1,36 @@
+digraph pandoc {
+    // pandoc converts through its own AST: any reader with any writer.
+    rankdir=LR;
+    nodesep=0.15;
+    ranksep=0.6;
+    node [shape=box, style="rounded,filled", fillcolor=white];
+    edge [arrowsize=0.7];
+
+    subgraph cluster_readers {
+        label="readers: parse";
+        style=rounded; color=gray60;
+        node [fillcolor=lightblue];
+        // Listed bottom up: dot stacks a rank's nodes in reverse here.
+        in_etc [label="…", shape=plaintext, style=""];
+        in_rst [label="rst"];
+        in_cm [label="commonmark"];
+        in_md [label="markdown"];
+    }
+
+    ast [label="pandoc AST", shape=ellipse, fillcolor=lightyellow];
+
+    subgraph cluster_writers {
+        label="writers: render";
+        style=rounded; color=gray60;
+        node [fillcolor=lightgreen];
+        out_etc [label="…", shape=plaintext, style=""];
+        out_latex [label="LaTeX"];
+        out_html [label="html"];
+        out_md [label="markdown"];
+    }
+
+    in_etc -> ast [style=dashed];
+    in_rst -> ast; in_cm -> ast; in_md -> ast;
+    ast -> out_etc [style=dashed];
+    ast -> out_latex; ast -> out_html; ast -> out_md;
+}
