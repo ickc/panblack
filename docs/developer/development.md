@@ -33,7 +33,7 @@ cabal run panblack -- --version
 
 ## The golden test
 
-`haskell/golden/run.sh` formats pandoc's own markdown with 1.0 and with the 0.x oracle, and compares the files byte for byte. The corpus is fetched with `cabal get` for the pinned pandoc version: `MANUAL.txt`, the top-level `.md` files, the markdown reader tests and `test/command/*.md`, 1128 files for pandoc 3.12.1. It runs under three settings: the defaults; the defaults with `html`; and `wrap: preserve`, `columns: 120`, `reference-location: block` with `html`.
+`haskell/golden/run.sh` formats pandoc's own markdown with 1.0 and with the 0.x oracle, and compares the files byte for byte. The corpus is fetched with `cabal get` for the pinned pandoc version: `MANUAL.txt`, the top-level `.md` files, the markdown reader tests and `test/command/*.md`, 1139 files for pandoc 3.13. It runs under three settings: the defaults; the defaults with `html`; and `wrap: preserve`, `columns: 120`, `reference-location: block` with `html`.
 
 ```bash
 haskell/golden/run.sh "$(cabal list-bin exe:panblack)" ~/.local/bin/panblack /tmp/golden
@@ -76,7 +76,7 @@ Publishing a GitHub release `vX` makes CI attach the archives to it; the tag mus
 - A pandoc bump is a major (`A.B`) release, with the style changes in the changelog. `C` releases never change output.
 - Breaking config changes bump `A`.
 - **Before 1.0**, releases are `0.99.x`. They exist to shake out distribution (Hackage, conda-forge, the release binaries) on a version nobody depends on yet, and promise nothing: any of them may change output or config. `0.99` sorts above the Python 0.x (last `0.2.0`), so an upgrade from it is an upgrade. `1.0.0` is declared once a `0.99.x` has gone through every channel without trouble.
-- The bundled pandoc version is shown wherever a user looks for it, but is not part of the version number: `panblack --version` (`panblack 1.0.0 (pandoc 3.12.1)`), the changelog entry, and the release notes. Why, in the [design notes](design.md#versioning).
+- The bundled pandoc version is shown wherever a user looks for it, but is not part of the version number: `panblack --version` (`panblack 1.0.0 (pandoc 3.13)`), the changelog entry, and the release notes. Why, in the [design notes](design.md#versioning).
 
 ## Hackage: one-time setup
 

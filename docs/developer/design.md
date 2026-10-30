@@ -30,30 +30,30 @@ else                                          -> reject, report the failed check
 
 Compared with 0.x (1 + 2N pandoc processes, each re-parsing), this parses twice, writes once, and runs the checks only when the fast path fails. Implementation: `Panblack.Guard`, in `PandocPure`.
 
-**The fast path, measured.** With CI's build of `c54891c` (`panblack --no-cache -v`, whose report says when the checks, rather than AST equality, accepted a reformatted file), on the golden corpus (1128 files of pandoc 3.12.1's own markdown), and with the current build on Quarto's documentation (552 pages, described with the test corpora under [Licence](#licence)):
+**The fast path, measured.** With `panblack --no-cache -v` (whose report says when the checks, rather than AST equality, accepted a reformatted file), on the golden corpus (1139 files of pandoc 3.13's own markdown) and on Quarto's documentation (552 pages, described with the test corpora under [Licence](#licence)):
 
 | Corpus | Settings | Accepted | AST-equal | via the checks | Rejected (failed checks) |
 |---|---|---|---|---|---|
-| pandoc | `check: [source]`, `normalize: []`, pandoc's defaults | 1122 | 658 | 464 | 6 |
-| pandoc | `check: [source, html]`, `normalize: []`, pandoc's defaults | 691 | 658 | 33 | 437 |
-| pandoc | `panblack init` | 887 | 887 | 0 | 241 (240 html, 1 both) |
-| pandoc | `panblack init`, `check: [source]` | 1126 | 886 | 240 | 1 |
-| pandoc | `panblack init`, `wrap: auto` | 886 | 850 | 36 | 242 |
+| pandoc | `check: [source]`, `normalize: []`, pandoc's defaults | 1135 | 665 | 470 | 4 |
+| pandoc | `check: [source, html]`, `normalize: []`, pandoc's defaults | 702 | 665 | 37 | 437 |
+| pandoc | `panblack init` | 897 | 897 | 0 | 242 (241 html, 1 both) |
+| pandoc | `panblack init`, `check: [source]` | 1138 | 897 | 241 | 1 |
+| pandoc | `panblack init`, `wrap: auto` | 896 | 857 | 39 | 243 |
 | Quarto | `panblack init` | 510 | 507 | 3 | 42 (34 html, 8 both) |
 | Quarto | `panblack init`, `wrap: auto` | 510 | 130 | 380 | 42 (33 html, 9 both) |
 
 What it shows (written up for users in [Core philosophy](../guide/philosophy.md#when-the-ast-doesnt-change-and-when-it-does)):
 
-- Accepting a changed AST is what `wrap: auto` depends on: all 33 files of the second row are reflows (`SoftBreak` and `Space` swapped), and on Quarto's pages 377 of the 380 (the other 3 are those of the next point).
-- With `wrap: preserve` and the normalizations, an AST change is always an output change on pandoc's corpus: no file is accepted through the checks, and the 240 that `source` alone accepts are all html failures. On Quarto's, 3 are: each holds an `{=html}` inline that `raw: native` writes natively, which reads back as two raw elements (`raw: auto` keeps it as typed).
+- Accepting a changed AST is what `wrap: auto` depends on: all 37 files of the second row are reflows (`SoftBreak` and `Space` swapped), and on Quarto's pages 377 of the 380 (the other 3 are those of the next point).
+- With `wrap: preserve` and the normalizations, an AST change is always an output change on pandoc's corpus: no file is accepted through the checks, and the 241 that `source` alone accepts are exactly its html failures. On Quarto's, 3 are: each holds an `{=html}` inline that `raw: native` writes natively, which reads back as two raw elements (`raw: auto` keeps it as typed).
 - In the steady state (a second run over the formatted corpus), every accepted file is unchanged, which is AST-equal trivially.
 
 **A wrap-insensitive fast path: measured, not adopted.** The recommended settings already include the five [normalizations](../guide/markdown.md#normalizations), which change what is accepted. A different kind would apply only to the two ASTs compared for the fast path, so it could only skip rendering the checks, never change what is accepted. The one that matters is wrapping: with `wrap: auto`, nearly every file is accepted through the checks, because reflowing swaps `SoftBreak` and `Space`. Measured with a build whose fast path compares the ASTs with every `SoftBreak` replaced by `Space` (same corpora, `panblack init` with `wrap: auto`, `--no-cache -j1`):
 
 | Corpus | Accepted via the checks | of those, equal with soft breaks as spaces | Rejected files equal so | Time, current → relaxed |
 |---|---|---|---|---|
-| pandoc | 36 | 36 | 0 | 6.2 s → 6.2 s |
-| Quarto | 380 | 377 | 0 | 6.6 s → 4.5 s |
+| pandoc | 39 | 39 | 0 | 7.1 s → 7.1 s |
+| Quarto | 380 | 377 | 0 | 6.9 s → 4.6 s |
 
 So reflowing is the only AST change nearly all those files had, and the relaxed fast path would decide exactly as the checks do. It isn't adopted:
 
@@ -87,16 +87,16 @@ Two WASI command modules, both released (usage in [Configuration and CLI](../gui
 
 Spike results (plan step 1, GHC 9.12.4 wasm backend):
 
-- Stock Hackage pandoc 3.12.1 builds for wasm; no fork, so the exact version pin holds. The output is byte-identical to the native build.
+- Stock Hackage pandoc 3.12.1 (and since then 3.13) builds for wasm; no fork, so the exact version pin holds. The output is byte-identical to the native build.
 - Size: 24.7 MB after `wasm-opt -Oz`, 6.2 MB gzipped. The full pandoc.org `pandoc.wasm` is 59 MB. The `md` and `md+html` tiers came out the same size, and building every package with `split-sections` changed nothing: the linker already drops unreachable code, and what is left is reachable. Most of it is static data (13 MB); among named code the largest are texmath, emojis and commonmark, all used by the markdown reader and writer. Going smaller would need changes in pandoc.
 - Latency on a 321-line document: 0.16 s under wasmtime (precompiled); under node, 38 ms to compile, 245 ms for the first run, then about 175 ms. A one-line file takes 0.01 s.
 - The host must pass a program name in `argv`; with an empty `argv` the GHC runtime exits with code 71.
 
-Toolchain: [ghc-wasm-meta](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta), installed as in [pandoc-wasm's CI](https://github.com/haskell-wasm/pandoc-wasm/blob/master/.github/workflows/build.yml) (download the archive, `FLAVOUR=9.12 ./setup.sh`), plus native `alex` and `happy`. `cabal.project.wasm` mirrors the `if arch(wasm32)` block of pandoc 3.12.1's own `cabal.project`: pandoc with `-http +embed_data_files`, and five patched dependencies whose patches are copied from pandoc's `wasm/patches` into `haskell/wasm/patches`. (The older pandoc-wasm fork, `haskell-wasm/pandoc`, is stale and not needed.)
+Toolchain: [ghc-wasm-meta](https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta), installed as in [pandoc-wasm's CI](https://github.com/haskell-wasm/pandoc-wasm/blob/master/.github/workflows/build.yml) (download the archive, `FLAVOUR=9.12 ./setup.sh`), plus native `alex` and `happy`. `cabal.project.wasm` mirrors the `if arch(wasm32)` block of pandoc 3.13's own `cabal.project`: pandoc with `-http +embed_data_files`, and five patched dependencies whose patches are copied from pandoc's `wasm/patches` into `haskell/wasm/patches`. (The older pandoc-wasm fork, `haskell-wasm/pandoc`, is stale and not needed.)
 
 ## Checks render with pandoc's defaults
 
-A check renders with pandoc's defaults for its target, with the template `$meta-json$` + `$body$` and no wrapping (`Panblack.Target.Html.targetOptions`), not with the profile's options as 0.x did. The rationale is in [What a check renders](../guide/philosophy.md#what-a-check-renders). The golden run confirms that the accept/reject decisions agree with 0.x's on all 1128 files under three settings.
+A check renders with pandoc's defaults for its target, with the template `$meta-json$` + `$body$` and no wrapping (`Panblack.Target.Html.targetOptions`), not with the profile's options as 0.x did. The rationale is in [What a check renders](../guide/philosophy.md#what-a-check-renders). The golden run confirms that the accept/reject decisions agree with 0.x's on all 1139 files under three settings.
 
 ## Notebooks
 
@@ -117,7 +117,7 @@ Cell-level formatting (`Panblack.Notebook`) is settled: the fallback, a whole-no
 
 # Formatter options
 
-The options a profile may set ([Options](../guide/markdown.md#options)) were taken from pandoc 3.10.2's source, and still hold for 3.12.1: the `ReaderOptions` fields that the Markdown and CommonMark readers use, and the `WriterOptions` fields that the Markdown writer uses. `pandoc:` is parsed by pandoc's own defaults-file parser after checking its keys, which is why the config needs no parsing dependency beyond the YAML library pandoc already uses: `yamlet` (YAML 1.2) since pandoc 3.13, so the config and the `pandoc:` options in it are read alike (`yes` is a string, a duplicate key is an error).
+The options a profile may set ([Options](../guide/markdown.md#options)) were taken from pandoc 3.10.2's source, and still hold for 3.13: the `ReaderOptions` fields that the Markdown and CommonMark readers use, and the `WriterOptions` fields that the Markdown writer uses. `pandoc:` is parsed by pandoc's own defaults-file parser after checking its keys, which is why the config needs no parsing dependency beyond the YAML library pandoc already uses: `yamlet` (YAML 1.2) since pandoc 3.13, so the config and the `pandoc:` options in it are read alike (`yes` is a string, a duplicate key is an error).
 
 | Format | Table extensions (`+` on by default) |
 |---|---|
@@ -146,7 +146,7 @@ The recommended settings and the reasons for each are in [Formatting markdown](.
 - **`wrap: auto`** can loop forever on the escape problem. It happened in this corpus at 72 and 100 columns, and one of the two alternating versions can even render different html.
 - **Pipe tables only** lose every table that needs a grid table (block content, multi-line cells).
 
-With the normalizations added and `smart` off, the same settings give **html 30/32 and 32/32 settled after one round**, on the corpus plus two new grid tables (one with a wrapped cell, one with block content in a cell). The two remaining failures are example lists and `#.` lists ([Known limitations](../guide/markdown.md#known-limitations)), plus a link bug ([upstream issue 6](#upstream-issues)) in the same file. On the golden corpus, the normalizations raise the accepted files from 694 to 887 of 1128 (pandoc 3.12.1).
+With the normalizations added and `smart` off, the same settings give **html 30/32 and 32/32 settled after one round**, on the corpus plus two new grid tables (one with a wrapped cell, one with block content in a cell). The two remaining failures are example lists and `#.` lists ([Known limitations](../guide/markdown.md#known-limitations)), plus a link bug ([upstream issue 6](#upstream-issues)) in the same file. On the golden corpus, the normalizations raise the accepted files from 703 to 897 of 1139 (pandoc 3.13).
 
 Further notes behind the recommendations:
 
@@ -238,22 +238,22 @@ The user-facing side is [Advanced: raw content](../guide/markdown.md#raw-content
 
 **The mechanism.** The writer copies a raw element of format `markdown` out verbatim (`nest 0` keeps its blank lines), in both the markdown and the CommonMark variant. So panblack can choose the syntax per element: an element to be written in the attribute form becomes a raw `markdown` element holding `` `…`{=fmt} `` or a fenced block followed by a blank line. Unless `raw: pandoc`, panblack also turns `raw_attribute` off in the writer (`rawWriterSpec`): with it on, the writer puts every raw inline in the attribute form itself. So `to` needs no raw setting, and the recommended config has no `to` at all; on both corpora, under every `raw:` setting and both flavours, the output is byte-identical to the old recommendation's `to: …-raw_attribute`. The fence is one backtick longer than the longest run in the content, at least 3 for blocks.
 
-**The policies, measured** with checks `[source, html, latex]`, the recommended settings, `--no-cache -j1`, on the golden corpus (1128 files) and Quarto's documentation (552 pages), read as pandoc markdown and as `commonmark_x-smart` (neither is written for CommonMark, so the second is a stress test). Quarto's with the current build:
+**The policies, measured** with checks `[source, html, latex]`, the recommended settings, `--no-cache -j1`, on the golden corpus (1139 files) and Quarto's documentation (552 pages), read as pandoc markdown and as `commonmark_x-smart` (neither is written for CommonMark, so the second is a stress test):
 
 | Flavour | `raw:` | pandoc corpus accepted | time | Quarto accepted | time | native elements rewritten (Quarto) |
 |---|---|---|---|---|---|---|
-| markdown | `native` | 887 | 4.7 s | 510 | 5.0 s | 0 |
-| markdown | `attribute` | 883 | 8.1 s | 516 | 4.7 s | 226 |
-| markdown | `auto` | 887 | 5.9 s | 516 | 5.2 s | 0 |
-| commonmark_x | `native` | 886 | 7.8 s | 512 | 4.0 s | 1 |
-| commonmark_x | `attribute` | 886 | 8.0 s | 513 | 3.9 s | 222 |
-| commonmark_x | `auto` | 886 | 11.1 s | 513 | 4.2 s | 1 |
+| markdown | `native` | 897 | 4.8 s | 510 | 5.1 s | 0 |
+| markdown | `attribute` | 893 | 8.5 s | 516 | 4.8 s | 226 |
+| markdown | `auto` | 897 | 6.0 s | 516 | 5.2 s | 0 |
+| commonmark_x | `native` | 896 | 8.0 s | 512 | 3.9 s | 1 |
+| commonmark_x | `attribute` | 896 | 8.1 s | 513 | 3.9 s | 222 |
+| commonmark_x | `auto` | 896 | 11.3 s | 513 | 4.2 s | 1 |
 
 - `auto` accepts every file `native` does, with the same output except in 3 files, where it keeps an `{=html}` inline as typed. It accepts 6 more pages, all with `{=html}` or `{=tex}` blocks that, written natively, read back as something else: an `<iframe>` inside a div is split in two, a `<div>` opens a div.
 - On pandoc markdown, the fixed rules of `native` (below) don't recover those 6. Telling an HTML fragment that reads back as something else from one that doesn't takes a reread.
 - In CommonMark, native HTML blocks end at a blank line, which the writer puts after them, so they read back intact, and `native` is enough. The one rule it needs: the writer removes blank lines inside a native HTML block (`removeBlankLinesInHTML`), so a block that contains one goes in the attribute form.
 - The one native element `native` and `auto` rewrite in CommonMark is an HTML block holding a blank line (the rule below).
-- The slowest file is pandoc's 1.3 MB `changelog.md` read as `commonmark_x`: 9.6 s with `auto`, 5.7 s with `native`.
+- The slowest file is pandoc's 1.3 MB `changelog.md` read as `commonmark_x`: 9.1 s with `auto`, 5.7 s with `native`.
 
 **Rules every policy but `attribute` and `pandoc` applies**, as they need no reread: formats the writer has no native syntax for; `latex` elements (native TeX reads as `tex`, so a `latex` element was typed in the attribute form; HTML has no such tell); TeX whose `\begin`/`\end` don't balance; in CommonMark, HTML blocks containing a blank line.
 
@@ -389,7 +389,7 @@ panblack 1.0 is distributed in two ways:
 
 GPL-2.0-or-later, as pandoc, laid out as pandoc does: `COPYRIGHT` holds the notice and the exceptions, `COPYING.md` the licence text (the cabal package in `haskell/` links to both). pandoc is GPL-2.0-or-later and every panblack binary bundles it, so distributed binaries were covered by the GPL anyway; with the source under the same licence there is no split, and the repository can include pandoc-derived material. 0.x keeps BSD-3: its releases, `v0.2.0` the last, are tagged on `main`, and the move to the GPL comes with the rewrite. The exception is `haskell/wasm/patches`, MIT, copied from pandoc.
 
-Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.12.1`), not copied into the repository. That keeps them in step with the pinned version whatever the licence. Some measurements also use Quarto's documentation, the `.qmd` pages of [quarto-web](https://github.com/quarto-dev/quarto-web) at commit `ecf8316` (renamed to `.md`, flattened into one directory), as a public corpus written for pandoc but never formatted by its writer. Quarto's own syntax isn't pandoc's: the writer escapes shortcodes (`{{< include x.md >}}` becomes `{{\< include x.md \>}}`), which pandoc's own output doesn't show, so these pages test the guard, not formatting Quarto projects.
+Test corpora come from pandoc itself (the markdown files under `test/`, and `MANUAL.txt`). They are taken at test time from the pinned pandoc source (`cabal get pandoc-3.13`), not copied into the repository. That keeps them in step with the pinned version whatever the licence. Some measurements also use Quarto's documentation, the `.qmd` pages of [quarto-web](https://github.com/quarto-dev/quarto-web) at commit `ecf8316` (renamed to `.md`, flattened into one directory), as a public corpus written for pandoc but never formatted by its writer. Quarto's own syntax isn't pandoc's: the writer escapes shortcodes (`{{< include x.md >}}` becomes `{{\< include x.md \>}}`), which pandoc's own output doesn't show, so these pages test the guard, not formatting Quarto projects.
 
 # Plan
 

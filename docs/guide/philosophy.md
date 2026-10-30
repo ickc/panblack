@@ -60,21 +60,21 @@ $$
 
 then $y' = y$ for every check, and none is rendered. This is the *fast path*. AST equality is enough, but not required: a file whose AST changes is still accepted when every check renders the same.
 
-So which does the work in practice? Measured on two corpora: pandoc 3.12.1's own markdown (`MANUAL.txt`, the top-level `.md` files, the reader tests and `test/command/*.md`: 1128 files, nearly all of which pandoc's writer reformats), and Quarto's documentation (the 552 `.qmd` pages of [quarto-web](https://github.com/quarto-dev/quarto-web) at commit `ecf8316`, read as pandoc markdown), which is written for pandoc through Quarto and was never formatted with pandoc's writer:
+So which does the work in practice? Measured on two corpora: pandoc 3.13's own markdown (`MANUAL.txt`, the top-level `.md` files, the reader tests and `test/command/*.md`: 1139 files, nearly all of which pandoc's writer reformats), and Quarto's documentation (the 552 `.qmd` pages of [quarto-web](https://github.com/quarto-dev/quarto-web) at commit `ecf8316`, read as pandoc markdown), which is written for pandoc through Quarto and was never formatted with pandoc's writer:
 
 | Corpus | Settings | Accepted | AST unchanged | AST changed, checks equal | Rejected |
 |---|---|---|---|---|---|
-| pandoc | [recommended](markdown.md#quick-start) | 887 | 887 | 0 | 241 |
-| pandoc | recommended, but `wrap: auto` | 886 | 850 | 36 | 242 |
-| pandoc | pandoc's defaults (`wrap: auto`), `check: [source, html]`, no normalizations | 691 | 658 | 33 | 437 |
+| pandoc | [recommended](markdown.md#quick-start) | 897 | 897 | 0 | 242 |
+| pandoc | recommended, but `wrap: auto` | 896 | 857 | 39 | 243 |
+| pandoc | pandoc's defaults (`wrap: auto`), `check: [source, html]`, no normalizations | 702 | 665 | 37 | 437 |
 | Quarto | recommended | 510 | 507 | 3 | 42 |
 | Quarto | recommended, but `wrap: auto` | 510 | 130 | **380** | 42 |
 
 Two things follow.
 
-**The checks are what let a formatter change the AST at all.** With `wrap: auto`, the writer reflows paragraphs: line breaks move, so `SoftBreak` and `Space` trade places in the AST, while the html is identical. On Quarto's pages, 380 of the 510 files accepted needed the html check, and AST equality alone would have accepted 130. Every one of the 33 in the third row is such a reflow. Requiring an unchanged AST would forbid reflowing, and any other style change that the AST happens to record. Defining "the same" by what you produce is what allows them.
+**The checks are what let a formatter change the AST at all.** With `wrap: auto`, the writer reflows paragraphs: line breaks move, so `SoftBreak` and `Space` trade places in the AST, while the html is identical. On Quarto's pages, 380 of the 510 files accepted needed the html check, and AST equality alone would have accepted 130. Every one of the 37 in the third row is such a reflow. Requiring an unchanged AST would forbid reflowing, and any other style change that the AST happens to record. Defining "the same" by what you produce is what allows them.
 
-**With the recommended settings, the writer nearly always either reproduces the AST or loses something you would see.** `wrap: preserve` keeps line breaks where they are, and the [normalizations](markdown.md#normalizations) state the remaining accidents (table widths, empty comments, ...) explicitly, so every accepted file of pandoc's corpus comes back AST-equal, and all but 3 of Quarto's. Those 3 each hold an `{=html}` inline that `raw: native` writes as plain HTML, which reads back as two raw elements with the same html ([`raw: auto`](markdown.md#raw-content) keeps it as typed). Every rejection, conversely, is an html difference (240 of the 241 on pandoc's corpus): a change in the AST that does show in the output. Asked alone, the `source` check would have accepted all 240, since they are stable. They are stable *and wrong*, which is what the html check is for. On Quarto's pages, all 42 rejections fail the html check.
+**With the recommended settings, the writer nearly always either reproduces the AST or loses something you would see.** `wrap: preserve` keeps line breaks where they are, and the [normalizations](markdown.md#normalizations) state the remaining accidents (table widths, empty comments, ...) explicitly, so every accepted file of pandoc's corpus comes back AST-equal, and all but 3 of Quarto's. Those 3 each hold an `{=html}` inline that `raw: native` writes as plain HTML, which reads back as two raw elements with the same html ([`raw: auto`](markdown.md#raw-content) keeps it as typed). Every rejection, conversely, is an html difference (241 of the 242 on pandoc's corpus): a change in the AST that does show in the output. Asked alone, the `source` check would have accepted all 241, since they are stable. They are stable *and wrong*, which is what the html check is for. On Quarto's pages, all 42 rejections fail the html check.
 
 So the checks carry the guarantee, and the fast path is how it is usually confirmed cheaply. Once a project is formatted, every file is unchanged,
 
@@ -82,7 +82,7 @@ $$
 x' = x,
 $$
 
-which is the fast path trivially: the checks cost time only when formatting changes what pandoc reads, which is exactly when they are needed. With `wrap: auto` that is the first time each paragraph is reflowed, and it costs only time: on Quarto's pages, the checks take about 2 of the 6.6 seconds of a first run on one core. (Comparing ASTs with soft breaks counted as spaces would skip them, and decides the same on both corpora, but the [design notes](../developer/design.md#guard-algorithm) explain why it isn't worth coupling the guard to wrapping.)
+which is the fast path trivially: the checks cost time only when formatting changes what pandoc reads, which is exactly when they are needed. With `wrap: auto` that is the first time each paragraph is reflowed, and it costs only time: on Quarto's pages, the checks take about 2.3 of the 6.9 seconds of a first run on one core. (Comparing ASTs with soft breaks counted as spaces would skip them, and decides the same on both corpora, but the [design notes](../developer/design.md#guard-algorithm) explain why it isn't worth coupling the guard to wrapping.)
 
 # What a check renders
 
@@ -98,7 +98,7 @@ The two differences from 0.x, in detail:
 - 0.x passed its `pandoc_args` to every conversion, its checks included. For markdown profiles it also passed its own markdown template (the title block plus the body) to every target, so its html check compared the body only and could not see a change to metadata. 1.0 compares all of the metadata in every check.
 - 0.x rendered with the profile's wrapping, so with `--wrap=preserve` the html kept the source's line breaks. 1.0 renders without wrapping.
 
-The effect is only on what counts as "the same": 1.0 compares what pandoc understood, and doesn't fail because of how a target is configured to look. On pandoc's 1128 markdown files under three settings, 1.0 and 0.x accept and reject exactly the same files.
+The effect is only on what counts as "the same": 1.0 compares what pandoc understood, and doesn't fail because of how a target is configured to look. On pandoc's 1139 markdown files under three settings, 1.0 and 0.x accept and reject exactly the same files.
 
 Extensions of a target can still be set in the check's name, e.g. `check: [source, html, latex-smart]`.
 

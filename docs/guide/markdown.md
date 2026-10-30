@@ -61,7 +61,7 @@ panblack decides itself how raw content is written back: inline HTML and TeX as 
 
 ## What these settings achieve
 
-On pandoc 3.12.1's own markdown (1128 files), the recommended settings with the default [normalizations](#normalizations) accept 887 files, against 694 without normalizations. The [design notes](../developer/design.md#recommended-defaults-the-evidence) have the runs behind each choice.
+On pandoc 3.13's own markdown (1139 files), the recommended settings with the default [normalizations](#normalizations) accept 897 files, against 703 without normalizations. The [design notes](../developer/design.md#recommended-defaults-the-evidence) have the runs behind each choice.
 
 # CommonMark and GFM
 
