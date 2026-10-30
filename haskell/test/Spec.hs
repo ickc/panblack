@@ -137,7 +137,7 @@ main = do
     all (\x -> rawSyntaxByName (rawSyntaxName x) == Just x) [minBound .. maxBound]
 
   -- Config
-  let parsed = parseConfig
+  let parsed = parseConfig ".panblack.yaml"
   check "config: defaults as 0.x, with every normalization" $
     fmap (map (\p -> (pcExts p, pcCheck p, pcNormalize p))) (parsed "- paths: [a]\n")
       == Right [(["md", "markdown"], ["source"], [minBound .. maxBound])]
@@ -147,6 +147,8 @@ main = do
     fmap (map (\p -> (pcNormalize p, KM.size (pcPandoc p)))) (parsed "- paths: [a]\n  normalize: [table-widths]\n  pandoc: {wrap: preserve, columns: 80}\n")
       == Right [([TableWidths], 2)]
   check "config: unknown profile key" $ isLeft (parsed "- paths: [a]\n  normalise: []\n")
+  check "config: YAML errors give the file and line, as pandoc's" $
+    either (".panblack.yaml:2:" `T.isPrefixOf`) (const False) (parsed "- paths: [a]\n  paths: [b]\n")
   check "config: rejected pandoc key" $ isLeft (parsed "- paths: [a]\n  pandoc: {filters: [x.lua]}\n")
   check "config: unknown normalization" $ isLeft (parsed "- paths: [a]\n  normalize: [tables]\n")
   check "config: raw defaults to native" $ fmap (map pcRaw) (parsed "- paths: [a]\n") == Right [RawNative]

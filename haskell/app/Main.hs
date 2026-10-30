@@ -156,7 +156,7 @@ run paths opts
       (root, configs) <- case configFile of
         Just f -> do
           bs <- B.readFile f
-          either (die' . ((relativeTo cwd f <> ": ") <>) . T.unpack) (pure . (takeDirectory f,)) (parseConfig bs)
+          either (die' . T.unpack) (pure . (takeDirectory f,)) (parseConfig (relativeTo cwd f) bs)
         Nothing
           | null paths -> die' ("no " <> configName <> " found and no paths given; see panblack init")
           | otherwise -> pure (cwd, [defaultProfileConfig {pcPaths = if stdinMode then [] else paths}])

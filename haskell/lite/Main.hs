@@ -20,7 +20,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Version (showVersion)
-import Data.Yaml qualified as Y
 import Panblack.Config
 import Panblack.Guard
 import Panblack.Normalize (Normalization, normalizationByName, normalizationName)
@@ -69,7 +68,7 @@ pandocValue k = \case
   Nothing -> Right (Bool True)
   Just s
     | k == "indented-code-classes" -> Right (Array (foldMap (pure . String) (filter (not . T.null) (T.splitOn "," (T.pack s)))))
-    | otherwise -> either (const (Right (String (T.pack s)))) Right (Y.decodeEither' (TE.encodeUtf8 (T.pack s)))
+    | otherwise -> either (const (Right (String (T.pack s)))) Right (decodeYaml "" (TE.encodeUtf8 (T.pack s)))
 
 usage :: String
 usage =

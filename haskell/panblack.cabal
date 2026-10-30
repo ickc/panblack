@@ -46,7 +46,8 @@ library
     , filepath      >=1.4 && <1.6
     , Glob          >=0.10 && <0.11
     , process       >=1.6 && <1.7
-    , yaml          >=0.11 && <0.12
+    , yamlet        >=1.0.0.1 && <1.1
+    , yamlet-aeson  >=1.0.0.1 && <1.1
   exposed-modules:
     Panblack.Cache
     Panblack.Config
@@ -104,4 +105,3 @@ executable panblack-lite
     , panblack
     , aeson
     , bytestring
-    , yaml

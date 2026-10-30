@@ -8,6 +8,7 @@ module Panblack.Config
   ( ProfileConfig (..)
   , defaultProfileConfig
   , parseConfig
+  , decodeYaml
   , Settings (..)
   , loadSettings
   , buildProfile
@@ -28,12 +29,14 @@ import Data.Aeson.Types (Parser, parseEither)
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
+import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Yaml qualified as Y
+import Yamlet qualified as Y
+import Yamlet.Aeson (ViaAeson (..))
 import Panblack.Guard (Check, Profile (..), sourceCheck)
 import Panblack.Markdown (markdownProfile)
 import Panblack.Normalize (Normalization, normalizationByName, normalizationName, normalizing)
@@ -84,11 +87,12 @@ defaultProfileConfig =
     , pcHooks = []
     }
 
--- | Parse a config file's contents. Unknown keys are errors.
-parseConfig :: ByteString -> Either Text [ProfileConfig]
-parseConfig bs = do
-  v <- first (T.pack . Y.prettyPrintParseException) (Y.decodeEither' bs)
-  first aesonError $ parseEither parseProfiles v
+-- | Parse a config file's contents; the errors name the file. Unknown keys
+-- are errors.
+parseConfig :: FilePath -> ByteString -> Either Text [ProfileConfig]
+parseConfig file bs = do
+  v <- decodeYaml file bs
+  first (((T.pack file <> ": ") <>) . aesonError) $ parseEither parseProfiles v
  where
   parseProfiles = A.withArray "list of profiles" $ \arr ->
     traverse (uncurry parseProfile) (zip [1 :: Int ..] (foldr (:) [] arr))
@@ -159,6 +163,13 @@ pandocKeys =
   ]
 
 -- | aeson's errors, without the JSON path: ours say where they are.
+-- | Parse YAML as pandoc does (yamlet, YAML 1.2), into an aeson value. The
+-- errors give the file, line and column.
+decodeYaml :: FilePath -> ByteString -> Either Text Value
+decodeYaml file bs = case Y.decode bs of
+  Right (ViaAeson v) -> Right v
+  Left errs -> Left (T.intercalate "\n" (map (T.pack . Y.prettyError file) (NE.toList errs)))
+
 aesonError :: String -> Text
 aesonError e = let t = T.pack e in fromMaybe t (T.stripPrefix "Error in $: " t)
 
@@ -191,7 +202,7 @@ loadSettings root pc = do
       r <- readFileE (root </> path)
       pure $ do
         bs <- r
-        v <- first (T.pack . Y.prettyPrintParseException) (Y.decodeEither' bs)
+        v <- decodeYaml path bs
         first aesonError $ flip parseEither v $ A.withObject "pandoc defaults file" $ \o ->
           o <$ unknownKeys (path <> ": ") pandocKeys o
   case fromFile >>= optsFrom . (pcPandoc pc `KM.union`) of
