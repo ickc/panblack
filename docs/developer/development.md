@@ -43,7 +43,7 @@ The second argument is the 0.x `panblack` (below), and the `pandoc` on `PATH` mu
 
 ## The 0.x oracle
 
-0.x is tagged `v0.2.0`. It works with Python 3.12 to 3.14 and pandoc 3.10.2 to 3.12.1 with no code changes. For the golden test, install it on its own:
+0.x is tagged `v0.2.0`. It works with Python 3.12 to 3.14 and pandoc 3.10.2 to 3.13 with no code changes. For the golden test, install it on its own:
 
 ```bash
 uv tool install git+https://github.com/ickc/panblack@v0.2.0   # or a worktree of the tag
@@ -56,7 +56,7 @@ uv venv .venv && uv pip install -e . pytest tomli jupytext
 .venv/bin/python -m pytest -q
 ```
 
-Caveat: the integration tests format the repository itself and run `jupytext --sync`. They rewrite tracked files and create `tests/ipynb/example_1.md`. Revert with `git checkout -- .` and `git clean -n` (review, then `-f`) afterwards.
+Caveat: the integration tests format the repository itself and run `jupytext --sync`. They rewrite tracked files and create `tests/ipynb/example_1.md`. Revert with `git checkout -- .` and `git clean -n` (review, then `-f`) afterwards. In a worktree, `tests/glob_test.py::test_exclude` fails whatever the pandoc version: it looks for the `.sample` hooks under `.git/`, and a worktree's `.git` is a file.
 
 # Builds
 
