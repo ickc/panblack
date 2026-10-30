@@ -117,7 +117,7 @@ Cell-level formatting (`Panblack.Notebook`) is settled: the fallback, a whole-no
 
 # Formatter options
 
-The options a profile may set ([Options](../guide/markdown.md#options)) were taken from pandoc 3.10.2's source, and still hold for 3.12.1: the `ReaderOptions` fields that the Markdown and CommonMark readers use, and the `WriterOptions` fields that the Markdown writer uses. `pandoc:` is parsed by pandoc's own defaults-file parser after checking its keys, which is why the config needs no parsing dependency beyond the `yaml` package pandoc already uses.
+The options a profile may set ([Options](../guide/markdown.md#options)) were taken from pandoc 3.10.2's source, and still hold for 3.12.1: the `ReaderOptions` fields that the Markdown and CommonMark readers use, and the `WriterOptions` fields that the Markdown writer uses. `pandoc:` is parsed by pandoc's own defaults-file parser after checking its keys, which is why the config needs no parsing dependency beyond the YAML library pandoc already uses: `yamlet` (YAML 1.2) since pandoc 3.13, so the config and the `pandoc:` options in it are read alike (`yes` is a string, a duplicate key is an error).
 
 | Format | Table extensions (`+` on by default) |
 |---|---|
