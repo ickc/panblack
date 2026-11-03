@@ -1,0 +1,46 @@
+# This site's own settings, merged on top of the shared `_quarto.yml` from
+# https://github.com/ickc/quarto-template (see there for how the two combine).
+project:
+  output-dir: _site
+  render:
+    - "**/*.md"
+
+website:
+  title: panblack
+  site-url: https://ickc.github.io/panblack/
+  description: A black-like formatter for pandoc users
+  repo-url: https://github.com/ickc/panblack
+  open-graph: true
+  navbar:
+    left:
+      - href: index.md
+        text: Home
+      # For someone with a job to do: what panblack promises, then one page per
+      # kind of source, then the reference.
+      - text: Guide
+        menu:
+          - href: guide/philosophy.md
+            text: Core philosophy
+          - href: guide/markdown.md
+            text: Formatting markdown
+          - href: guide/notebooks.md
+            text: Formatting notebooks
+          - href: guide/configuration.md
+            text: Configuration and CLI
+          - href: guide/migration.md
+            text: Migrating from 0.x
+      # For working on panblack itself: how, then why.
+      - text: Developer
+        menu:
+          - href: developer/development.md
+            text: Development
+          - href: developer/design.md
+            text: Design notes
+      - href: changelog.md
+        text: Changelog
+    right:
+      - icon: github
+        href: https://github.com/ickc/panblack
+        aria-label: GitHub
+  page-footer:
+    left: "© {{< copyright-year 2021 >}} Kolen Cheung · GPL-2.0-or-later"
