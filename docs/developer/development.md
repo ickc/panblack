@@ -107,9 +107,9 @@ cabal upload --token=... --documentation --publish dist-newstyle/panblack-X-docs
 This site is Quarto, in `docs/`, with Quarto and Graphviz from pixi:
 
 ```bash
-pixi run preview  # live preview on port 21576, re-rendered on save
+QUARTO_ARGS= pixi run preview  # live preview, re-rendered on save
 pixi run build    # render to docs/_site
-pixi run serve    # serve docs/_site as is, on port 21576
+pixi run preview  # re-render on save into docs/_site, serving nothing
 pixi run clean    # remove the rendered site and diagrams
 ```
 
