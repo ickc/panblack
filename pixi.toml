@@ -6,7 +6,7 @@ channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 
 [dependencies]
-quarto = "*"
+quarto = ">=1.11.9,<2"
 # Renders the diagrams in docs/media/dot.
 graphviz = "*"
 # For `serve` only: a plain static server over the last render.
