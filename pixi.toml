@@ -11,6 +11,12 @@ quarto = ">=1.11.9,<2"
 graphviz = "*"
 # For scripts/screenshot.sh: a plain static server over the last render.
 python = ">=3.12"
+# paragraphic, the post graph (the template's README, "The post graph")
+beautifulsoup4 = "*"
+pyyaml = "*"
+
+[pypi-dependencies]
+paragraphic = { version = ">=0.2.1,<0.3", extras = ["quarto"] }
 
 [tasks]
 build-media = { cmd = "make", cwd = "docs/media/dot", description = "Render the diagrams: an SVG from each docs/media/dot/*.dot" }
