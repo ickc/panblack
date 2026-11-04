@@ -4,6 +4,9 @@ project:
   output-dir: _site
   render:
     - "**/*.md"
+  # The post graph (the template's README, "The post graph"): graph.json and its viewer.
+  post-render:
+    - paragraphic build --preset quarto --groups directories --exclude 404.html
 
 website:
   title: panblack
@@ -15,6 +18,8 @@ website:
     left:
       - href: index.md
         text: Home
+      - href: graph.md
+        text: Graph
       # For someone with a job to do: what panblack promises, then one page per
       # kind of source, then the reference.
       - text: Guide
@@ -44,3 +49,9 @@ website:
         aria-label: GitHub
   page-footer:
     left: "© {{< copyright-year 2021 >}} Kolen Cheung · GPL-2.0-or-later"
+
+format:
+  html:
+    # The page's own graph card (the post graph).
+    include-after-body:
+      - _paragraphic.html
