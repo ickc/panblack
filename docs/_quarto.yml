@@ -1,0 +1,59 @@
+# SHARED FILE from https://github.com/ickc/quarto-template. Do not edit it in a
+# site: it is overwritten when the site is synced with the template. Put
+# site-specific settings in `_quarto-site.yml` instead.
+#
+# `_quarto-site.yml` is the `site` profile, which is always active (see
+# `profile` below), and Quarto merges it on top of this file:
+#
+# - a value the site sets replaces the one here;
+# - a list the site sets is appended to the one here (e.g. `filters`,
+#   `include-in-header`), never replacing it.
+#
+# So the theme list below is fixed: a site restyles through its own
+# `custom.scss`, which every theme here already includes last.
+
+profile:
+  # A group whose only member is `site`: Quarto activates the first profile of
+  # a group when none of its members is given, so `_quarto-site.yml` applies
+  # even under `quarto render --profile <other>`.
+  group:
+    - [site]
+
+project:
+  type: website
+
+lang: en-US
+
+format:
+  html:
+    theme:
+      light: [flatly, shared.scss, custom.scss]
+      dark: [darkly, shared.scss, custom.scss]
+    # Follow the reader's OS setting, with a toggle in the navbar.
+    respect-user-color-scheme: true
+    # MathJax 4 rather than Quarto's default MathJax 3, for its Schola font: the
+    # same face as the prose (see `shared.scss`).
+    html-math-method:
+      method: mathjax
+      url: https://cdn.jsdelivr.net/npm/mathjax@4.1.3/tex-chtml.js
+    include-in-header:
+      # TeX Gyre Schola and JetBrains Mono, named in `shared.scss`, served by
+      # https://font.kolen.dev. Linked here rather than `@import`ed from SCSS so
+      # the preload scanner finds the faces while the theme bundle is still
+      # downloading. Both preconnects are needed: the font fetches are
+      # anonymous-mode CORS and use a different connection pool from the
+      # stylesheet request.
+      - text: |
+          <link rel="preconnect" href="https://font.kolen.dev">
+          <link rel="preconnect" href="https://font.kolen.dev" crossorigin>
+          <link rel="stylesheet" href="https://font.kolen.dev/assets/faces.css">
+      - text: |
+          <script>window.MathJax = { output: { font: "mathjax-schola" } };</script>
+    toc: true
+    toc-depth: 3
+    code-copy: true
+    code-overflow: wrap
+    email-obfuscation: javascript
+
+execute:
+  freeze: auto

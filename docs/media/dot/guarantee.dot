@@ -1,0 +1,32 @@
+digraph guarantee {
+    // X -AST-> Y = X -AST-> X -AST-> Y: your conversion, before and after formatting.
+    rankdir=LR;
+    nodesep=0.1;
+    node [shape=box, style="rounded,filled", fillcolor=white];
+    edge [fontsize=11, arrowsize=0.7];
+
+    x1 [label="x\n(your source)", fillcolor=lightblue];
+    a1 [label="AST", shape=ellipse, fillcolor=lightyellow];
+    y1 [label="y", fillcolor=lightgreen];
+
+    x2 [label="x", fillcolor=lightblue];
+    a2 [label="AST", shape=ellipse, fillcolor=lightyellow];
+    xf [label="x′\n(formatted)", fillcolor=lightblue];
+    a3 [label="AST′", shape=ellipse, fillcolor=lightyellow];
+    y2 [label="y′", fillcolor=lightgreen];
+
+    // The top row is as long as the bottom one, so y and y′ line up.
+    x1 -> a1 [label="parse"];
+    a1 -> y1 [label="render", minlen=5];
+    x2 -> a2 [label="parse"];
+    a2 -> xf [label="write"];
+    xf -> a3 [label="parse"];
+    a3 -> y2 [label="render"];
+
+    {rank=same; x1; x2}
+    {rank=same; y1; eq; y2}
+    // The label is a node of its own, so the dashed line stops at it.
+    eq [label="must be equal", shape=plaintext, style="", fontsize=11, fontcolor=gray25];
+    edge [dir=none, style=dashed, color=gray40];
+    y1 -> eq; eq -> y2;
+}
